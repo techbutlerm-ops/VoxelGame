@@ -42,6 +42,8 @@ export class VoxelStore {
   private chunks = new Map<number, ChunkVoxels>();
   /** Keys of chunks that differ from the procedural world. */
   readonly edited = new Set<number>();
+  /** Edited chunks changed since the last save. */
+  readonly unsaved = new Set<number>();
   private frame = 0;
   private last: ChunkVoxels | null = null;
   private lastKey = -1;
@@ -99,6 +101,25 @@ export class VoxelStore {
     const c = this.chunk(cx, cy, cz);
     if (!c.density) return dequantize(c.uniformDensity);
     return dequantize(c.density[x - c.ox + (y - c.oy + (z - c.oz) * CHUNK) * CHUNK]);
+  }
+
+  /** Voxels of an edited chunk, for saving. */
+  exportChunk(key: number): { cx: number; cy: number; cz: number; density: Uint8Array; material: Uint8Array } | null {
+    const c = this.chunks.get(key);
+    if (!c || !c.density || !c.material) return null;
+    return { cx: c.ox / CHUNK, cy: c.oy / CHUNK, cz: c.oz / CHUNK, density: c.density.slice(), material: c.material.slice() };
+  }
+
+  /** Install a saved edited chunk (before terrain streaming, so every LOD sees it). */
+  importChunk(cx: number, cy: number, cz: number, density: Uint8Array, material: Uint8Array) {
+    const key = chunkKey(cx, cy, cz);
+    this.chunks.set(key, {
+      ox: cx * CHUNK, oy: cy * CHUNK, oz: cz * CHUNK,
+      density, material, uniformDensity: 0, uniformMaterial: AIR, edited: true, lastUsed: this.frame,
+    });
+    this.edited.add(key);
+    this.last = null;
+    this.lastKey = -1;
   }
 
   /** Is the voxel solid? (Quantized density above the surface level.) */
@@ -198,7 +219,9 @@ export class VoxelStore {
     if (!record.chunks.size) return { changed, removed, added, addedMats, replaced, dirty: new Set(), undo: null };
     for (const c of record.chunks.keys()) {
       c.edited = true;
-      this.edited.add(chunkKey(c.ox / CHUNK, c.oy / CHUNK, c.oz / CHUNK));
+      const key = chunkKey(c.ox / CHUNK, c.oy / CHUNK, c.oz / CHUNK);
+      this.edited.add(key);
+      this.unsaved.add(key);
     }
     return { changed, removed, added, addedMats, replaced, dirty: this.dirtyAround(x0, y0, z0, x1, y1, z1), undo: record };
   }
@@ -232,6 +255,7 @@ export class VoxelStore {
   /** Restore the voxels an edit changed. Returns the chunks to remesh. */
   revert(record: UndoRecord): Set<number> {
     for (const [c, rec] of record.chunks) {
+      this.unsaved.add(chunkKey(c.ox / CHUNK, c.oy / CHUNK, c.oz / CHUNK));
       this.materialize(c);
       for (let k = rec.idx.length - 1; k >= 0; k--) {
         c.density![rec.idx[k]] = rec.d[k];

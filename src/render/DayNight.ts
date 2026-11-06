@@ -48,6 +48,15 @@ export class DayNight {
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   }
 
+  get state() {
+    return { time: this.time, phase: this.phase };
+  }
+
+  set state(s: { time: number; phase: number }) {
+    this.time = s.time;
+    this.phase = s.phase;
+  }
+
   /** Skip ahead by some hours. */
   advance(hours: number) {
     this.time += (hours / 24) * DAY_SECONDS;

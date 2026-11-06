@@ -17,6 +17,8 @@ import { Effects } from './render/Effects';
 import { DayNight, LightPool } from './render/DayNight';
 import { Mode, RESOURCES, RESOURCE_NAMES, Survival } from './game/Survival';
 import { HOTBAR, M } from './world/materials';
+import { SavedChunk, exportWorld, getChunks, openDB, putChunks, putWorld } from './game/SaveGame';
+import { runMenu } from './ui/Menu';
 import './style.css';
 
 async function main() {
@@ -25,6 +27,14 @@ async function main() {
   const loadBar = document.getElementById('load-bar')!;
   const loadLabel = document.getElementById('load-label')!;
   const startBtn = document.getElementById('start') as HTMLButtonElement;
+  const el = (id: string) => document.getElementById(id)!;
+
+  // --- Pick (or create) a world first; nothing is generated until then ---
+  const params = new URLSearchParams(location.search);
+  const { meta, chunks: savedChunks } = await runMenu(params.get('seed'));
+  el('menu').hidden = true;
+  el('loading').hidden = false;
+  const state = meta.state;
 
   // --- Renderer / scene ---
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
@@ -65,15 +75,13 @@ async function main() {
   });
 
   // --- World ---
-  const params = new URLSearchParams(location.search);
-  const seedParam = params.get('seed');
-  const seed = seedParam ? Number(seedParam) || hashString(seedParam) : 1337;
-  setSeed(seed);
-
+  setSeed(meta.seed);
   const workerParam = params.get('workers');
   const workers = workerParam !== null ? Number(workerParam) : Math.max(2, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
   const pool = new WorkerPool(workers);
   const store = new VoxelStore();
+  // Saved edits go in before streaming so every level of detail includes them.
+  for (const c of savedChunks) store.importChunk(c.cx, c.cy, c.cz, c.density, c.material);
   const terrain = new Terrain(pool, store, createTerrainMaterial());
   scene.add(terrain.group);
   const ocean = new Ocean();
@@ -81,8 +89,15 @@ async function main() {
 
   // --- Player / tools / UI ---
   const player = new Player(store);
-  const spawn = findSpawn();
-  player.spawnAt(spawn.dir, spawn.h + 40);
+  const spawn = state ? { dir: new THREE.Vector3().fromArray(state.spawn.dir), h: state.spawn.h } : findSpawn();
+  if (state) {
+    player.pos.fromArray(state.player.pos);
+    player.heading.fromArray(state.player.heading);
+    player.pitch = state.player.pitch;
+    player.updateFrame();
+  } else {
+    player.spawnAt(spawn.dir, spawn.h + 40);
+  }
   const tools = new Tools(store, terrain, player);
   scene.add(tools.preview);
   const physics = new Physics(store, terrain, terrain.material, (record, origin) => tools.debrisLanded(record, origin));
@@ -105,8 +120,16 @@ async function main() {
     await new Promise((r) => setTimeout(r, 16));
   }
   console.info(`Terrain ready in ${Math.round(performance.now() - t0)} ms (${terrain.meshCount} meshes, ${terrain.jobsDone} jobs, ${Math.round(terrain.jobMs / Math.max(1, terrain.jobsDone))} ms/job, ${workers} workers)`);
-  player.spawnAt(spawn.dir, spawn.h + 2);
-  dayNight.setLocalHour(spawn.dir, 8.5);
+  if (state) {
+    player.flying = state.player.flying;
+    dayNight.state = state.time;
+    for (const l of state.lamps) lights.addLamp(new THREE.Vector3().fromArray(l));
+    physics.enabled = state.physicsEnabled;
+    physics.restore(state.bodies);
+  } else {
+    player.spawnAt(spawn.dir, spawn.h + 2);
+    dayNight.setLocalHour(spawn.dir, 8.5);
+  }
   tools.onLamp = (p) => lights.addLamp(p);
 
   // --- Survival / creative ---
@@ -119,31 +142,111 @@ async function main() {
     document.body.classList.toggle('creative', mode === 'creative');
     hud.setMode(mode === 'creative' ? 'Creative · M for survival' : 'Survival · M for creative');
   };
-  setMode('survival');
+  setMode(meta.mode);
+  if (state) {
+    survival.health = state.survival.health;
+    for (const [res, n] of state.survival.inventory) survival.inventory.set(res, n);
+  }
+
+  // --- Saving ---
+  let storageOk = !!(await openDB());
+  let saving = false;
+  let playTime = meta.playTime;
+  const saveStatus = el('save-status');
+  const save = async (): Promise<boolean> => {
+    if (!storageOk || saving) return false;
+    saving = true;
+    const keys = [...store.unsaved];
+    store.unsaved.clear();
+    try {
+      await putChunks(meta.id, keys.map((k) => store.exportChunk(k)).filter((c): c is SavedChunk => !!c));
+      meta.mode = survival.mode;
+      meta.updated = Date.now();
+      meta.playTime = playTime;
+      meta.state = {
+        player: { pos: player.pos.toArray(), heading: player.heading.toArray(), pitch: player.pitch, flying: player.flying },
+        spawn: { dir: spawn.dir.toArray(), h: spawn.h },
+        survival: { health: survival.dead ? survival.maxHealth : survival.health, inventory: [...survival.inventory] },
+        time: dayNight.state,
+        lamps: lights.lamps.map((l) => l.toArray()),
+        physicsEnabled: physics.enabled,
+        distance: distanceWalked,
+        bodies: physics.snapshot(),
+      };
+      await putWorld(meta);
+      saveStatus.textContent = `Saved at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      return true;
+    } catch (err) {
+      for (const k of keys) store.unsaved.add(k);
+      saveStatus.textContent = `Couldn't save: ${(err as Error).message}`;
+      storageOk = !!(await openDB());
+      return false;
+    } finally {
+      saving = false;
+    }
+  };
+  if (!storageOk) saveStatus.textContent = "Saving isn't available here (private window or blocked site data), so this world won't be kept.";
+  setInterval(() => {
+    if (started && !survival.dead) void save();
+  }, 20000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && started) void save();
+  });
 
   const input = new Input(canvas, (active) => {
     overlay.classList.toggle('hidden', active || survival.dead);
     document.body.classList.toggle('playing', active);
-  });
-  const creativeBtn = document.getElementById('start-creative') as HTMLButtonElement;
-  startBtn.disabled = false;
-  creativeBtn.disabled = false;
-  startBtn.textContent = 'Play survival';
-  loadLabel.textContent = `Ready · seed ${seed}`;
-  let started = false;
-  const begin = (mode: Mode) => {
-    if (!started) {
-      setMode(mode);
-      started = true;
-      // From now on the overlay is the pause screen.
-      startBtn.textContent = 'Resume';
-      creativeBtn.hidden = true;
-      document.getElementById('mode-hint')!.hidden = true;
+    if (!active && started) {
+      // Paused: save, and prepare a world code for copying.
+      void save().then(() => prepareCode());
     }
+  });
+  startBtn.disabled = false;
+  startBtn.textContent = 'Play';
+  loadLabel.textContent = `${meta.name} · seed ${meta.seed}`;
+  let started = false;
+  startBtn.addEventListener('click', () => {
+    started = true;
+    document.body.classList.remove('in-menu');
+    el('loading').hidden = true;
+    el('pause').hidden = false;
     input.engage();
+    void save(); // so a brand-new world shows up in the list right away
+  });
+  el('resume').addEventListener('click', () => input.engage());
+  el('quit').addEventListener('click', async () => {
+    (el('quit') as HTMLButtonElement).disabled = true;
+    saveStatus.textContent = 'Saving…';
+    await save();
+    location.reload();
+  });
+  // World code: built after each save so the click can copy it right away.
+  let code = '';
+  const prepareCode = async () => {
+    if (!storageOk) return;
+    try {
+      code = await exportWorld(meta, await getChunks(meta.id));
+    } catch {
+      code = '';
+    }
   };
-  startBtn.addEventListener('click', () => begin(survival.mode === 'creative' && started ? 'creative' : 'survival'));
-  creativeBtn.addEventListener('click', () => begin('creative'));
+  el('copy-code').addEventListener('click', async () => {
+    const area = el('export-code') as HTMLTextAreaElement;
+    if (!code) await prepareCode();
+    if (!code) {
+      saveStatus.textContent = "The world code isn't ready; it needs saving to work.";
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(code);
+      saveStatus.textContent = `World code copied (${Math.round(code.length / 1024)} KB of text). Paste it into "Import a world code" on any browser.`;
+    } catch {
+      area.hidden = false;
+      area.value = code;
+      area.select();
+      saveStatus.textContent = 'Copy the world code from the box above.';
+    }
+  });
   canvas.addEventListener('click', () => {
     if (!input.active && started && !survival.dead) input.engage();
   });
@@ -161,12 +264,13 @@ async function main() {
   const sunDir = new THREE.Vector3();
   let last = performance.now();
   let fpsAccum = 0, fpsFrames = 0, fps = 0;
-  let distanceWalked = 0;
+  let distanceWalked = state ? state.distance : 0;
   const frame = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
     if (input.active && !survival.dead) {
+      playTime += dt;
       if (input.pressed.has('KeyH')) hud.toggleHelp();
       if (input.pressed.has('KeyM')) {
         setMode(survival.creative ? 'survival' : 'creative');
@@ -302,11 +406,6 @@ const NIGHT_SKY = new THREE.Color(0x3a4f80);
 const DAY_GROUND = new THREE.Color(0x6a5a45);
 const NIGHT_GROUND = new THREE.Color(0x0c0b0a);
 
-function hashString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return h >>> 0;
-}
 
 main().catch((err) => {
   console.error(err);

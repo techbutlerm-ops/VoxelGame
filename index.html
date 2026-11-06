@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Voxel Planet</title>
   </head>
-  <body>
+  <body class="in-menu">
     <canvas id="game"></canvas>
 
     <div id="crosshair"></div>
@@ -64,13 +64,42 @@
       <div class="panel">
         <h1>Voxel Planet</h1>
         <p class="tag">A round, fully destructible world 6&nbsp;km in radius. Walk all the way around it, dig under it, build over it, and watch what you undercut come crashing down.</p>
-        <div class="load"><div id="load-bar"></div></div>
-        <p id="load-label">Starting…</p>
-        <div class="buttons">
+        <section id="menu">
+          <div id="worlds"></div>
+          <form id="new-world" autocomplete="off">
+            <h2>New world</h2>
+            <div class="fields">
+              <label>Name <input id="world-name" maxlength="40" /></label>
+              <label>Seed <input id="world-seed" maxlength="40" /></label>
+            </div>
+            <div class="buttons">
+              <button type="submit" id="new-survival">Play survival</button>
+              <button type="button" id="new-creative" class="secondary">Creative</button>
+            </div>
+            <p class="hint">Survival: dig to gather resources, build with them, mind your health. Creative: fly, unlimited materials, undo.</p>
+          </form>
+          <details id="import">
+            <summary>Import a world code</summary>
+            <textarea id="import-code" rows="3" placeholder="Paste a world code here"></textarea>
+            <div class="buttons"><button type="button" id="import-btn" class="secondary">Import</button></div>
+            <p id="import-msg" class="hint"></p>
+          </details>
+          <p id="storage-note" class="hint"></p>
+        </section>
+        <section id="loading" hidden>
+          <div class="load"><div id="load-bar"></div></div>
+          <p id="load-label">Starting…</p>
           <button id="start" disabled>Loading…</button>
-          <button id="start-creative" class="secondary" disabled>Creative</button>
-        </div>
-        <p class="hint" id="mode-hint">Survival: dig to gather resources, build with them, mind your health. Creative: fly, unlimited materials, undo.</p>
+        </section>
+        <section id="pause" hidden>
+          <div class="buttons">
+            <button id="resume">Resume</button>
+            <button id="quit" class="secondary">Save and quit to menu</button>
+          </div>
+          <div class="buttons"><button id="copy-code" class="secondary">Copy world code</button></div>
+          <textarea id="export-code" rows="3" readonly hidden></textarea>
+          <p id="save-status" class="hint"></p>
+        </section>
         <div class="keys">
           <span><kbd>WASD</kbd> move</span>
           <span><kbd>F</kbd> fly</span>

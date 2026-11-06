@@ -13,6 +13,10 @@
 * {
   box-sizing: border-box;
 }
+/* The hidden attribute must win over display rules (menu, loading and pause sections). */
+[hidden] {
+  display: none !important;
+}
 html,
 body {
   margin: 0;
@@ -405,4 +409,158 @@ button.secondary:disabled {
   background: var(--accent);
   color: #06121e;
   cursor: pointer;
+}
+
+#overlay .panel {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+#menu,
+#pause,
+#loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+#menu h2 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+#worlds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.world {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.world .info {
+  flex: 1;
+  min-width: 0;
+}
+.world .name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.world .meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.world button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.world button.play {
+  background: var(--accent);
+  color: #06121e;
+  border-color: var(--accent);
+}
+.world button.danger {
+  color: #ff8a7a;
+}
+#new-world {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fields {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fields label {
+  flex: 1 1 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+#overlay input,
+#overlay textarea {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  width: 100%;
+  resize: vertical;
+}
+#overlay button:focus-visible,
+#overlay input:focus-visible,
+#overlay textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+#import summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+#import[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#overlay .buttons {
+  justify-content: flex-start;
+}
+#loading,
+#pause {
+  text-align: center;
+}
+#loading .buttons,
+#pause .buttons {
+  justify-content: center;
+}
+#resume {
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 26px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--accent);
+  color: #06121e;
+  cursor: pointer;
+}
+#new-survival {
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--accent);
+  color: #06121e;
+  cursor: pointer;
+}
+
+/* Before a world is playing, only the menu shows. */
+body.in-menu #crosshair,
+body.in-menu #hud-top,
+body.in-menu #hud-bottom,
+body.in-menu #vitals,
+body.in-menu #inventory,
+body.in-menu #help {
+  display: none;
 }

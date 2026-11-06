@@ -26,8 +26,20 @@ npm run build          # static build in dist/
 npm run build:single   # one self-contained HTML file in dist-single/index.html
 ```
 
-URL options: `?seed=anything` picks a different planet; `?workers=0` forces main-thread
-generation (for debugging).
+URL options: `?seed=anything` prefills the seed for a new world; `?workers=0` forces
+main-thread generation (for debugging).
+
+## Saving
+
+Worlds are saved in the browser (IndexedDB): every edited chunk (compressed, written
+incrementally), debris still in flight, your position, mode, health, inventory and spawn point,
+the time of day, lamps and the physics setting. The game autosaves every 20 seconds, when you
+pause (Esc) and when you switch tabs; **Save and quit to menu** returns to the world list.
+
+The start menu lists your worlds (play or delete) and creates new ones from a name, seed and
+mode. **Copy world code** on the pause screen puts a whole world on the clipboard as text;
+paste it into **Import a world code** in the menu, in any browser, to load it there. Saves
+live in this browser only: a private window or cleared site data means worlds aren't kept.
 
 ## Day, night and light
 
@@ -144,6 +156,8 @@ sharp edges and flat faces. Natural materials (dirt, stone, sand) stay smooth.
 | `src/render/Effects.ts` | Explosion flash and camera shake |
 | `src/render/DayNight.ts` | Sun/moon orbit and local time, lamp light pool, flashlight |
 | `src/game/Survival.ts` | Health, damage, resource inventory, building recipes and refunds |
+| `src/game/SaveGame.ts` | IndexedDB worlds and chunks, gzip, world codes |
+| `src/ui/Menu.ts` | World list, new world, import |
 | `src/render/` | Terrain material (procedural detail), sky dome, camera-centered ocean |
 
 Units are voxels throughout (1 voxel = 0.25 m). Chunks are 32³ voxels at LOD 0; each LOD level

@@ -77,7 +77,8 @@ export class Player {
     this.unstick();
   }
 
-  private updateFrame() {
+  /** Recompute local up and re-level the heading for the current position. */
+  updateFrame() {
     this.up.copy(this.pos).normalize();
     // Parallel transport: re-project the heading onto the new tangent plane.
     this.heading.addScaledVector(this.up, -this.heading.dot(this.up));

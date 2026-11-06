@@ -8,6 +8,7 @@ import { Terrain } from '../world/Terrain';
 import { Component, findFloating, voxelKey } from './Structure';
 import { findOverstressed } from './Stress';
 import { mulberry32 } from '../world/noise';
+import type { SavedBody } from '../game/SaveGame';
 
 const MARGIN = 2;
 const FRICTION = 0.6;
@@ -349,6 +350,28 @@ export class Physics {
     this.bodies.push(b);
     // Too many bodies: freeze the oldest where they are.
     while (this.bodies.length > MAX_BODIES) this.settle(this.bodies[0]);
+  }
+
+  /** Falling bodies, for saving. */
+  snapshot(): SavedBody[] {
+    return this.bodies.map((b) => ({
+      nx: b.nx, ny: b.ny, nz: b.nz,
+      density: b.density.slice(), material: b.material.slice(),
+      origin: b.worldOrigin.toArray(), pos: b.pos.toArray(), quat: b.quat.toArray(),
+      vel: b.vel.toArray(), ang: b.ang.toArray(), generation: b.generation,
+    }));
+  }
+
+  /** Bring saved bodies back, still falling. */
+  restore(saved: SavedBody[]) {
+    for (const s of saved) {
+      const b = new Body(s.nx, s.ny, s.nz, s.density, s.material, new THREE.Vector3().fromArray(s.origin), s.generation);
+      b.pos.fromArray(s.pos);
+      b.quat.fromArray(s.quat);
+      b.vel.fromArray(s.vel);
+      b.ang.fromArray(s.ang);
+      this.add(b);
+    }
   }
 
   /** Remove every body set falling by `origin` (undo), without writing them back. */
