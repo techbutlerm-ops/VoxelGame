@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PLAYER, toMeters } from '../config';
 import { HOTBAR, MATERIALS, MATERIAL_CONSTRUCT, hexColor } from '../world/materials';
 import { EditOp, UndoRecord, VoxelStore } from '../world/VoxelStore';
+import type { Body, Physics } from '../physics/Physics';
 import { Terrain } from '../world/Terrain';
 import { Player } from '../player/Player';
 import { Input } from '../player/Input';
@@ -40,6 +41,12 @@ export const GRID_SIZES = [1, 2, 4, 8];
 
 const tmpG = { x: 0, y: 0, z: 0 };
 const UNDO_LIMIT = 64;
+
+/** One undoable action: its voxel edits (applied in order) and any bodies it set falling. */
+interface UndoEntry {
+  records: UndoRecord[];
+  bodies: Body[];
+}
 /** Horizontal directions in quarter-turn order around the frame's up axis. */
 const QUARTER: Rise[] = [{ axis: 0, sign: 1 }, { axis: 2, sign: 1 }, { axis: 0, sign: -1 }, { axis: 2, sign: -1 }];
 
@@ -85,7 +92,9 @@ export class Tools {
   target: Hit | null = null;
   buildPiece: Piece | null = null;
   digPiece: Piece | null = null;
-  private undoStack: UndoRecord[] = [];
+  private undoStack: UndoEntry[] = [];
+  /** Structural physics; when set, removing material can make unsupported parts fall. */
+  physics: Physics | null = null;
   private cooldown = 0;
   lastChanged = 0;
   /** Messages for the HUD (e.g. "Undone"); consumed by main. */
@@ -343,23 +352,36 @@ export class Tools {
   }
 
   private commit(min: THREE.Vector3, max: THREE.Vector3, op: EditOp): number {
-    const { changed, dirty, undo } = this.store.edit([min.x, min.y, min.z], [max.x, max.y, max.z], op);
+    const { changed, removed, dirty, undo } = this.store.edit([min.x, min.y, min.z], [max.x, max.y, max.z], op);
     if (undo) {
-      this.undoStack.push(undo);
-      if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
       this.terrain.remesh(dirty);
+      const entry: UndoEntry = { records: [undo], bodies: [] };
+      // Anything left without support breaks off and falls; undo puts it back too.
+      if (this.physics && removed.length) {
+        const fall = this.physics.collapse(removed);
+        if (fall.record) entry.records.push(fall.record);
+        entry.bodies.push(...fall.bodies);
+        if (fall.bodies.length) this.message = fall.bodies.length > 1 ? `${fall.bodies.length} pieces collapsed` : 'Collapse!';
+      }
+      this.pushUndo(entry);
     }
     this.lastChanged = changed;
     return changed;
   }
 
+  pushUndo(entry: UndoEntry) {
+    this.undoStack.push(entry);
+    if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+  }
+
   undo() {
-    const rec = this.undoStack.pop();
-    if (!rec) {
+    const entry = this.undoStack.pop();
+    if (!entry) {
       this.message = 'Nothing to undo';
       return;
     }
-    this.terrain.remesh(this.store.revert(rec));
+    for (const b of entry.bodies) this.physics?.remove(b);
+    for (let i = entry.records.length - 1; i >= 0; i--) this.terrain.remesh(this.store.revert(entry.records[i]));
     this.message = 'Undone';
   }
 

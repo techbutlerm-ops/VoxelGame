@@ -101,6 +101,18 @@ export class VoxelStore {
     return dequantize(c.density[x - c.ox + (y - c.oy + (z - c.oz) * CHUNK) * CHUNK]);
   }
 
+  /** Is the voxel solid? (Quantized density above the surface level.) */
+  solid(x: number, y: number, z: number): boolean {
+    const c = this.chunk(Math.floor(x / CHUNK), Math.floor(y / CHUNK), Math.floor(z / CHUNK));
+    if (!c.density) return c.uniformDensity > 128;
+    return c.density[x - c.ox + (y - c.oy + (z - c.oz) * CHUNK) * CHUNK] > 128;
+  }
+
+  /** Has the chunk containing this voxel ever been edited? */
+  editedAt(x: number, y: number, z: number): boolean {
+    return this.edited.has(chunkKey(Math.floor(x / CHUNK), Math.floor(y / CHUNK), Math.floor(z / CHUNK)));
+  }
+
   material(x: number, y: number, z: number): number {
     const cx = Math.floor(x / CHUNK), cy = Math.floor(y / CHUNK), cz = Math.floor(z / CHUNK);
     const c = this.chunk(cx, cy, cz);
@@ -139,8 +151,10 @@ export class VoxelStore {
    */
   edit(
     min: [number, number, number], max: [number, number, number], op: EditOp,
-  ): { changed: number; dirty: Set<number>; undo: UndoRecord | null } {
+  ): { changed: number; removed: number[]; dirty: Set<number>; undo: UndoRecord | null } {
     let changed = 0;
+    /** Flat x,y,z list of voxels that went from solid to air (seeds for the support check). */
+    const removed: number[] = [];
     const x0 = Math.floor(min[0]), y0 = Math.floor(min[1]), z0 = Math.floor(min[2]);
     const x1 = Math.ceil(max[0]), y1 = Math.ceil(max[1]), z1 = Math.ceil(max[2]);
     const record: UndoRecord = { chunks: new Map(), box: [x0, y0, z0, x1, y1, z1] };
@@ -160,17 +174,20 @@ export class VoxelStore {
           let rec = record.chunks.get(c);
           if (!rec) record.chunks.set(c, (rec = { idx: [], d: [], m: [] }));
           rec.idx.push(i); rec.d.push(oldQ); rec.m.push(oldM);
-          if ((oldQ > 128) !== (q > 128)) changed++;
+          if ((oldQ > 128) !== (q > 128)) {
+            changed++;
+            if (oldQ > 128) removed.push(x, y, z);
+          }
           c.density![i] = q;
           c.material![i] = out.m;
         }
 
-    if (!record.chunks.size) return { changed, dirty: new Set(), undo: null };
+    if (!record.chunks.size) return { changed, removed, dirty: new Set(), undo: null };
     for (const c of record.chunks.keys()) {
       c.edited = true;
       this.edited.add(chunkKey(c.ox / CHUNK, c.oy / CHUNK, c.oz / CHUNK));
     }
-    return { changed, dirty: this.dirtyAround(x0, y0, z0, x1, y1, z1), undo: record };
+    return { changed, removed, dirty: this.dirtyAround(x0, y0, z0, x1, y1, z1), undo: record };
   }
 
   /** Restore the voxels an edit changed. Returns the chunks to remesh. */

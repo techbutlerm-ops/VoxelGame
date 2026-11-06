@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { toMeters } from './config';
 import { BIOME_NAMES, B, setSeed, surfaceAt, Surface } from './world/planet';
+import * as planet from './world/planet';
 import { VoxelStore } from './world/VoxelStore';
 import { Terrain } from './world/Terrain';
 import { WorkerPool } from './world/WorkerPool';
@@ -11,6 +12,7 @@ import { Input } from './player/Input';
 import { TOOLS, Tools, raycast } from './tools/Tools';
 import * as BuildGrid from './tools/BuildGrid';
 import { Hud } from './ui/Hud';
+import { Physics } from './physics/Physics';
 import './style.css';
 
 async function main() {
@@ -74,6 +76,9 @@ async function main() {
   player.spawnAt(spawn.dir, spawn.h + 40);
   const tools = new Tools(store, terrain, player);
   scene.add(tools.preview);
+  const physics = new Physics(store, terrain, terrain.material, (record) => tools.pushUndo({ records: [record], bodies: [] }));
+  tools.physics = physics;
+  scene.add(physics.group);
   const hud = new Hud();
 
   // Stream in the area around the spawn before letting the player in.
@@ -102,7 +107,7 @@ async function main() {
     if (!input.active) input.engage();
   });
 
-  Object.assign(window as unknown as Record<string, unknown>, { game: { store, terrain, player, tools, input, camera, scene, renderer, raycast, BuildGrid, THREE } });
+  Object.assign(window as unknown as Record<string, unknown>, { game: { store, terrain, player, tools, physics, input, camera, scene, renderer, raycast, BuildGrid, THREE, planet } });
 
   // --- Loop ---
   const surf: Surface = { h: 0, biome: 0, top: 0, sub: 0, temp: 0, moist: 0 };
@@ -129,6 +134,7 @@ async function main() {
       }
     }
     input.endFrame();
+    physics.update(dt);
     store.tick();
 
     // Camera
@@ -168,7 +174,8 @@ async function main() {
       fpsAccum = 0; fpsFrames = 0;
       hud.setDebug(
         `${fps} fps · ${(terrain.triangles / 1e6).toFixed(2)}M tris · ${terrain.meshCount} meshes` +
-          (terrain.pendingJobs ? ` · ${terrain.pendingJobs} jobs` : '') + ` · ${store.size} cached`,
+          (terrain.pendingJobs ? ` · ${terrain.pendingJobs} jobs` : '') + ` · ${store.size} cached` +
+          (physics.bodies.length ? ` · ${physics.bodies.length} falling` : ''),
       );
     }
 

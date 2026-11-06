@@ -11,6 +11,9 @@ A fully destructible, smooth-voxel sandbox on a round planet, running in the bro
 - **Biomes.** Ocean, beach, plains, forest, desert, tundra, taiga and mountains (with snow caps).
   They're driven by continent, climate (latitude and altitude) and moisture noise. Trees and
   cacti are voxels too.
+- **Structural collapse.** Remove what holds something up and it breaks off, falls under planet
+  gravity, smashes into rubble on hard landings, and settles back into the world as voxels.
+  Felled trees topple; undercut buildings come down.
 - **Persistence.** Edited chunks are kept and override the procedural world wherever they're
   meshed, at any level of detail.
 
@@ -55,6 +58,15 @@ the face you aim at, rise from it, and line up with the cells around them.
 Terrain tools sculpt smoothly: **Terrain** digs or adds a sphere, **Flatten** levels ground to
 the nearest grid height (handy before laying a floor), and **Smooth** softens rough ground.
 
+### Collapse
+
+After every cut, the game checks whether the solid regions next to it still connect to natural
+ground (untouched terrain; tree wood and leaves don't count). Anything that doesn't becomes a
+rigid body with mass from its materials, falls toward the planet's center, collides with the
+terrain, and breaks into rubble on impacts above about 1 m of fall (or when a building lands
+badly tilted). Resting debris is written back as voxels, so it can be dug, built on or knocked
+down again. Ctrl+Z undoes debris landings one by one, and undoing the cut puts the structure back.
+
 Construction materials (stone block, planks, brick, concrete, metal, glass, clay) are meshed with
 sharp edges and flat faces. Natural materials (dirt, stone, sand) stay smooth.
 
@@ -71,6 +83,8 @@ sharp edges and flat faces. Natural materials (dirt, stone, sand) stay smooth.
 | `src/player/Player.ts` | Spherical-gravity character controller against the density field |
 | `src/tools/BuildGrid.ts` | Build frames on the sphere, grid pieces and their signed distance fields |
 | `src/tools/Tools.ts` | Raymarched targeting, grid pieces, terrain brushes, previews and undo |
+| `src/physics/Structure.ts` | Support check: flood fill toward the planet center from removed voxels, finding regions not connected to ground |
+| `src/physics/Physics.ts` | Rigid bodies for falling pieces: mass/inertia, impulse contacts against the density field, shattering, settling back into voxels |
 | `src/render/` | Terrain material (procedural detail), sky dome, camera-centered ocean |
 
 Units are voxels throughout (1 voxel = 0.25 m). Chunks are 32³ voxels at LOD 0; each LOD level

@@ -68,7 +68,29 @@ def(M.CLAY, { construct: true, name: 'Clay', color: 0xb5795a, density: 1.8, buil
 def(M.ICE, { name: 'Ice', color: 0xbcdcea, density: 0.9, buildable: false });
 def(M.STONE_BLOCK, { construct: true, name: 'Stone Block', color: 0x9c9890, density: 2.6, buildable: true });
 
+/** Rubble: broken construction material keeps its color (a little darker) but meshes smooth. */
+export const RUBBLE_OFFSET = 32;
+for (const [id, m] of defs.entries()) {
+  if (!m?.construct) continue;
+  const c = m.color;
+  const dark = (v: number) => Math.round(v * 0.82);
+  def(id + RUBBLE_OFFSET, {
+    name: `${m.name} rubble`,
+    color: (dark((c >> 16) & 255) << 16) | (dark((c >> 8) & 255) << 8) | dark(c & 255),
+    density: m.density,
+    buildable: false,
+  });
+}
+
 export const MATERIALS: Material[] = defs.map((m, id) => ({ ...m, id }));
+
+/** The rubble variant of a material (natural materials are their own rubble). */
+export function rubbleOf(id: number): number {
+  return MATERIALS[id]?.construct ? id + RUBBLE_OFFSET : id;
+}
+
+/** Mass per voxel, by material id. */
+export const MATERIAL_DENSITY = new Float32Array(64).fill(1);
 
 /** Materials offered in the hotbar, in slot order (keys 1-9, 0). */
 export const HOTBAR: number[] = [
@@ -97,6 +119,7 @@ for (const m of MATERIALS) {
   MATERIAL_LINEAR[m.id * 3 + 2] = srgbToLinear((m.color & 255) / 255);
   MATERIAL_CLIFF[m.id] = m.cliff ?? m.id;
   MATERIAL_CONSTRUCT[m.id] = m.construct ? 1 : 0;
+  MATERIAL_DENSITY[m.id] = m.density;
 }
 
 export function hexColor(id: number): string {
