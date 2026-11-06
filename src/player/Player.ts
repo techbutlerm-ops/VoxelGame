@@ -8,6 +8,8 @@ const v3 = new THREE.Vector3();
 const basis = new THREE.Matrix4();
 const qPitch = new THREE.Quaternion();
 const X_AXIS = new THREE.Vector3(1, 0, 0);
+/** The player's mass in voxel-mass units (a stone voxel is 2.6). */
+const PLAYER_MASS = 20;
 
 /**
  * First-person walker on a spherical planet. "Up" is away from the planet center; the heading
@@ -27,6 +29,9 @@ export class Player {
   noclip = false;
   readonly groundNormal = new THREE.Vector3();
   private stepSmooth = 0;
+
+  /** Falling debris the player collides with (set once physics exists). */
+  obstacles: { resolveSphere(c: THREE.Vector3, r: number, vel: THREE.Vector3, mass: number): THREE.Vector3 | null } | null = null;
 
   constructor(private store: VoxelStore) {}
 
@@ -216,6 +221,21 @@ export class Player {
         moved = true;
       }
       if (!moved) break;
+    }
+
+    // Falling debris: get knocked around by it, or stand on it.
+    if (this.obstacles) {
+      for (const off of [r, PLAYER.height / 2, PLAYER.height - r]) {
+        const c = this.pos.clone().addScaledVector(this.up, off);
+        const before = c.clone();
+        const n = this.obstacles.resolveSphere(c, r, this.vel, PLAYER_MASS);
+        if (!n) continue;
+        this.pos.add(c.sub(before));
+        if (n.dot(this.up) > 0.55) {
+          this.onGround = true;
+          this.groundNormal.copy(n);
+        }
+      }
     }
 
     // Step assist: climb small ledges (e.g. a built block) when walking into them.

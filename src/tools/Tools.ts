@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PLAYER, toMeters } from '../config';
 import { HOTBAR, MATERIALS, MATERIAL_CONSTRUCT, hexColor } from '../world/materials';
 import { EditOp, UndoRecord, VoxelStore } from '../world/VoxelStore';
-import type { Body, Physics } from '../physics/Physics';
+import type { Physics } from '../physics/Physics';
 import { Terrain } from '../world/Terrain';
 import { Player } from '../player/Player';
 import { Input } from '../player/Input';
@@ -14,7 +14,7 @@ export interface Hit {
   distance: number;
 }
 
-export type ToolId = 'block' | 'wall' | 'floor' | 'pillar' | 'ramp' | 'sphere' | 'flatten' | 'smooth';
+export type ToolId = 'block' | 'wall' | 'floor' | 'pillar' | 'ramp' | 'sphere' | 'flatten' | 'smooth' | 'blast';
 
 interface ToolDef {
   id: ToolId;
@@ -34,6 +34,7 @@ export const TOOLS: ToolDef[] = [
   { id: 'sphere', name: 'Terrain', grid: false, size: 3, maxSize: 24 },
   { id: 'flatten', name: 'Flatten', grid: false, size: 8, maxSize: 32 },
   { id: 'smooth', name: 'Smooth', grid: false, size: 4, maxSize: 16 },
+  { id: 'blast', name: 'Blast', grid: false, size: 6, maxSize: 16 },
 ];
 
 /** Grid cell sizes in voxels (0.25, 0.5, 1 and 2 m). */
@@ -42,10 +43,12 @@ export const GRID_SIZES = [1, 2, 4, 8];
 const tmpG = { x: 0, y: 0, z: 0 };
 const UNDO_LIMIT = 64;
 
-/** One undoable action: its voxel edits (applied in order) and any bodies it set falling. */
-interface UndoEntry {
+/**
+ * One undoable action: its voxel edits in the order applied, including the debris it caused
+ * landing later. Bodies it set falling point back at the entry (Body.origin).
+ */
+export interface UndoEntry {
   records: UndoRecord[];
-  bodies: Body[];
 }
 /** Horizontal directions in quarter-turn order around the frame's up axis. */
 const QUARTER: Rise[] = [{ axis: 0, sign: 1 }, { axis: 2, sign: 1 }, { axis: 0, sign: -1 }, { axis: 2, sign: -1 }];
@@ -99,6 +102,8 @@ export class Tools {
   lastChanged = 0;
   /** Messages for the HUD (e.g. "Undone"); consumed by main. */
   message: string | null = null;
+  /** The last explosion, for effects; consumed by main. */
+  blast: { center: THREE.Vector3; radius: number } | null = null;
 
   readonly preview = new THREE.Group();
   private pieceGroup = new THREE.Group();
@@ -302,6 +307,8 @@ export class Tools {
           };
       min = c.clone().subScalar(r + 4);
       max = c.clone().addScalar(r + 4);
+    } else if (id === 'blast') {
+      return this.detonate(hit.point.clone().addScaledVector(hit.normal, -this.radius * 0.3), this.radius);
     } else if (id === 'flatten') {
       ({ op, min, max } = this.flattenOp(hit));
     } else {
@@ -352,21 +359,49 @@ export class Tools {
   }
 
   private commit(min: THREE.Vector3, max: THREE.Vector3, op: EditOp): number {
-    const { changed, removed, dirty, undo } = this.store.edit([min.x, min.y, min.z], [max.x, max.y, max.z], op);
+    const { changed, removed, added, dirty, undo } = this.store.edit([min.x, min.y, min.z], [max.x, max.y, max.z], op);
     if (undo) {
       this.terrain.remesh(dirty);
-      const entry: UndoEntry = { records: [undo], bodies: [] };
+      const entry: UndoEntry = { records: [undo] };
       // Anything left without support breaks off and falls; undo puts it back too.
-      if (this.physics && removed.length) {
-        const fall = this.physics.collapse(removed);
+      if (this.physics && (removed.length || added.length)) {
+        const fall = this.physics.collapse(removed, added);
         if (fall.record) entry.records.push(fall.record);
-        entry.bodies.push(...fall.bodies);
+        for (const b of fall.bodies) b.origin = entry;
         if (fall.bodies.length) this.message = fall.bodies.length > 1 ? `${fall.bodies.length} pieces collapsed` : 'Collapse!';
       }
       this.pushUndo(entry);
     }
     this.lastChanged = changed;
     return changed;
+  }
+
+  /** Set off an explosion: crater, flying rubble, collapse around it, and a shove for the player. */
+  detonate(center: THREE.Vector3, radius: number): number {
+    this.blast = { center: center.clone(), radius };
+    if (!this.physics) return 0;
+    const { records, bodies } = this.physics.explode(center, radius);
+    if (records.length) {
+      const entry: UndoEntry = { records };
+      for (const b of bodies) b.origin = entry;
+      this.pushUndo(entry);
+    }
+    const away = this.player.eye.sub(center);
+    const dist = away.length();
+    const reach = radius * 5;
+    if (dist < reach) {
+      this.player.vel.addScaledVector(away.normalize(), 45 * (1 - dist / reach));
+      this.player.vel.addScaledVector(this.player.up, 10 * (1 - dist / reach));
+      this.player.onGround = false;
+    }
+    return bodies.length;
+  }
+
+  /** Debris landed: fold the write into the action that knocked it loose, if still undoable. */
+  debrisLanded(record: UndoRecord, origin: unknown) {
+    const entry = this.undoStack.find((e) => e === origin);
+    if (entry) entry.records.push(record);
+    else this.pushUndo({ records: [record] });
   }
 
   pushUndo(entry: UndoEntry) {
@@ -380,7 +415,7 @@ export class Tools {
       this.message = 'Nothing to undo';
       return;
     }
-    for (const b of entry.bodies) this.physics?.remove(b);
+    this.physics?.removeFrom(entry);
     for (let i = entry.records.length - 1; i >= 0; i--) this.terrain.remesh(this.store.revert(entry.records[i]));
     this.message = 'Undone';
   }
@@ -526,7 +561,7 @@ export class Tools {
       const c = t.point.clone();
       this.sphere.position.copy(c);
       this.sphere.scale.setScalar(r);
-      this.brushMat.color.set(this.def.id === 'smooth' ? 0xffffff : color);
+      this.brushMat.color.set(this.def.id === 'smooth' ? 0xffffff : this.def.id === 'blast' ? 0xff6a2a : color);
       this.sphere.visible = true;
     }
   }

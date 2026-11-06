@@ -283,7 +283,10 @@ function gatherPlanes(cj: number, x: number, y: number, z: number, n: number, mx
 export function surfaceNets(
   density: Float32Array, material: Uint8Array, stride: number,
   ox: number, oy: number, oz: number,
+  /** Only the first n samples per axis hold data (smaller debris pieces); the rest is air. */
+  extent = S,
 ): MeshData | null {
+  const E = Math.min(C, extent); // cells per axis worth visiting
   cellVert.fill(-1);
   cellFlags.fill(0);
   let vc = 0;
@@ -291,9 +294,9 @@ export function surfaceNets(
 
   // --- Pass 1: classify cells, mass points, and (if needed) hermite planes ---
   let anyConstruct = false;
-  for (let z = 0; z < C; z++)
-    for (let y = 0; y < C; y++)
-      for (let x = 0; x < C; x++) {
+  for (let z = 0; z < E; z++)
+    for (let y = 0; y < E; y++)
+      for (let x = 0; x < E; x++) {
         let mask = 0;
         // The visible material is the solid corner closest to the surface (smallest positive
         // density), not the deepest one, or coarse LODs would show subsoil in stripes.
@@ -453,7 +456,7 @@ export function surfaceNets(
 
   // --- Quads ---
   let ic = 0;
-  const lo = PAD - 1, hi = S - PAD; // sample indices whose edges this chunk owns: local -1 .. CHUNK
+  const lo = PAD - 1, hi = Math.min(S - PAD, E); // sample indices whose edges this chunk owns: local -1 .. CHUNK
   for (let z = lo; z < hi; z++) {
     for (let y = lo; y < hi; y++) {
       for (let x = lo; x < hi; x++) {

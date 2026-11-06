@@ -11,9 +11,9 @@ A fully destructible, smooth-voxel sandbox on a round planet, running in the bro
 - **Biomes.** Ocean, beach, plains, forest, desert, tundra, taiga and mountains (with snow caps).
   They're driven by continent, climate (latitude and altitude) and moisture noise. Trees and
   cacti are voxels too.
-- **Structural collapse.** Remove what holds something up and it breaks off, falls under planet
+- **Structural physics.** Remove what holds something up and it breaks off, falls under planet
   gravity, smashes into rubble on hard landings, and settles back into the world as voxels.
-  Felled trees topple; undercut buildings come down.
+  Buildings obey material span limits, debris collides with everything, and explosives demolish.
 - **Persistence.** Edited chunks are kept and override the procedural world wherever they're
   meshed, at any level of detail.
 
@@ -44,7 +44,8 @@ generation (for debugging).
 | G | Grid size: 0.25, 0.5, 1 or 2 m |
 | R | Rotate walls and ramps |
 | 1–0, Q/E | Select material |
-| Ctrl+Z | Undo |
+| Ctrl+Z | Undo (including any collapse it caused) |
+| P | Structural physics on/off |
 | H | Help |
 
 ### Building
@@ -58,14 +59,27 @@ the face you aim at, rise from it, and line up with the cells around them.
 Terrain tools sculpt smoothly: **Terrain** digs or adds a sphere, **Flatten** levels ground to
 the nearest grid height (handy before laying a floor), and **Smooth** softens rough ground.
 
-### Collapse
+### Collapse, stress and explosives
 
-After every cut, the game checks whether the solid regions next to it still connect to natural
-ground (untouched terrain; tree wood and leaves don't count). Anything that doesn't becomes a
-rigid body with mass from its materials, falls toward the planet's center, collides with the
-terrain, and breaks into rubble on impacts above about 1 m of fall (or when a building lands
-badly tilted). Resting debris is written back as voxels, so it can be dug, built on or knocked
-down again. Ctrl+Z undoes debris landings one by one, and undoing the cut puts the structure back.
+After every edit, the game checks two things around it:
+
+- **Support.** Do the solid regions next to a cut still connect to natural ground (untouched
+  terrain; tree wood and leaves don't count)? Anything that doesn't breaks off.
+- **Stress.** Can each part of a building still be carried from where it touches the ground?
+  Every construction material spans a set distance horizontally: glass 1 m, clay 2 m, stone
+  block 2.5 m, planks and brick 3 m, concrete 5 m, metal 8 m. Span is charged to whichever
+  material is doing the spanning, and hanging below a support costs extra. Overlong cantilevers,
+  roofs that are too wide, and pieces placed in mid-air come down.
+
+Loose pieces become rigid bodies with mass from their materials. They fall toward the planet's
+center, collide with the terrain, with each other and with you (you can be knocked over or stand
+on them), and break into rubble on hard landings (more than about a 1 m fall) or when a building
+lands badly tilted. Resting debris is written back as voxels. **Blast** (the last tool) carves a
+crater, throws the material around it as flying rubble, shoves nearby debris and the player, and
+lets whatever it undermined collapse.
+
+One Ctrl+Z undoes an action together with everything it caused, including debris landing later.
+**P** turns structural physics off (creative mode) and back on.
 
 Construction materials (stone block, planks, brick, concrete, metal, glass, clay) are meshed with
 sharp edges and flat faces. Natural materials (dirt, stone, sand) stay smooth.
@@ -84,7 +98,9 @@ sharp edges and flat faces. Natural materials (dirt, stone, sand) stay smooth.
 | `src/tools/BuildGrid.ts` | Build frames on the sphere, grid pieces and their signed distance fields |
 | `src/tools/Tools.ts` | Raymarched targeting, grid pieces, terrain brushes, previews and undo |
 | `src/physics/Structure.ts` | Support check: flood fill toward the planet center from removed voxels, finding regions not connected to ground |
-| `src/physics/Physics.ts` | Rigid bodies for falling pieces: mass/inertia, impulse contacts against the density field, shattering, settling back into voxels |
+| `src/physics/Stress.ts` | Span-based structural stress for construction materials |
+| `src/physics/Physics.ts` | Rigid bodies for falling pieces: mass/inertia, contacts with terrain, other debris and the player, shattering, explosions, settling back into voxels |
+| `src/render/Effects.ts` | Explosion flash and camera shake |
 | `src/render/` | Terrain material (procedural detail), sky dome, camera-centered ocean |
 
 Units are voxels throughout (1 voxel = 0.25 m). Chunks are 32³ voxels at LOD 0; each LOD level

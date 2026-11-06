@@ -97,10 +97,12 @@ body {
   flex-wrap: wrap;
   justify-content: center;
   gap: 4px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
 }
 .tool {
   font-size: 11px;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 10px;
   color: rgba(255, 255, 255, 0.75);
   background: var(--slot);
@@ -126,17 +128,7 @@ body {
   border-radius: 6px;
   position: relative;
 }
-#hotbar::before {
-  content: attr(data-name);
-  position: absolute;
-  bottom: calc(100% + 46px);
-  left: 50%;
-  transform: translateX(-50%);
-  color: #fff;
-  font-weight: 600;
-  text-shadow: 0 1px 2px #000;
-  white-space: nowrap;
-}
+
 .slot {
   width: 40px;
   height: 40px;

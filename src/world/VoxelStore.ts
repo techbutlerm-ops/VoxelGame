@@ -151,10 +151,12 @@ export class VoxelStore {
    */
   edit(
     min: [number, number, number], max: [number, number, number], op: EditOp,
-  ): { changed: number; removed: number[]; dirty: Set<number>; undo: UndoRecord | null } {
+  ): { changed: number; removed: number[]; added: number[]; dirty: Set<number>; undo: UndoRecord | null } {
     let changed = 0;
     /** Flat x,y,z list of voxels that went from solid to air (seeds for the support check). */
     const removed: number[] = [];
+    /** Flat x,y,z list of voxels that went from air to solid. */
+    const added: number[] = [];
     const x0 = Math.floor(min[0]), y0 = Math.floor(min[1]), z0 = Math.floor(min[2]);
     const x1 = Math.ceil(max[0]), y1 = Math.ceil(max[1]), z1 = Math.ceil(max[2]);
     const record: UndoRecord = { chunks: new Map(), box: [x0, y0, z0, x1, y1, z1] };
@@ -177,17 +179,18 @@ export class VoxelStore {
           if ((oldQ > 128) !== (q > 128)) {
             changed++;
             if (oldQ > 128) removed.push(x, y, z);
+            else added.push(x, y, z);
           }
           c.density![i] = q;
           c.material![i] = out.m;
         }
 
-    if (!record.chunks.size) return { changed, removed, dirty: new Set(), undo: null };
+    if (!record.chunks.size) return { changed, removed, added, dirty: new Set(), undo: null };
     for (const c of record.chunks.keys()) {
       c.edited = true;
       this.edited.add(chunkKey(c.ox / CHUNK, c.oy / CHUNK, c.oz / CHUNK));
     }
-    return { changed, removed, dirty: this.dirtyAround(x0, y0, z0, x1, y1, z1), undo: record };
+    return { changed, removed, added, dirty: this.dirtyAround(x0, y0, z0, x1, y1, z1), undo: record };
   }
 
   /** Restore the voxels an edit changed. Returns the chunks to remesh. */

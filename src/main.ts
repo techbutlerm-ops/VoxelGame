@@ -13,6 +13,7 @@ import { TOOLS, Tools, raycast } from './tools/Tools';
 import * as BuildGrid from './tools/BuildGrid';
 import { Hud } from './ui/Hud';
 import { Physics } from './physics/Physics';
+import { Effects } from './render/Effects';
 import './style.css';
 
 async function main() {
@@ -76,9 +77,12 @@ async function main() {
   player.spawnAt(spawn.dir, spawn.h + 40);
   const tools = new Tools(store, terrain, player);
   scene.add(tools.preview);
-  const physics = new Physics(store, terrain, terrain.material, (record) => tools.pushUndo({ records: [record], bodies: [] }));
+  const physics = new Physics(store, terrain, terrain.material, (record, origin) => tools.debrisLanded(record, origin));
   tools.physics = physics;
+  player.obstacles = physics;
   scene.add(physics.group);
+  const effects = new Effects();
+  scene.add(effects.group);
   const hud = new Hud();
 
   // Stream in the area around the spawn before letting the player in.
@@ -128,9 +132,17 @@ async function main() {
       if (wasNoclip !== player.noclip) hud.flash(player.noclip ? 'No-clip ON' : 'No-clip OFF');
       else if (wasFlying !== player.flying) hud.flash(player.flying ? 'Fly mode ON' : 'Fly mode OFF');
       tools.update(dt, input);
+      if (input.pressed.has('KeyP')) {
+        physics.enabled = !physics.enabled;
+        hud.flash(physics.enabled ? 'Structural physics ON' : 'Structural physics OFF (creative)');
+      }
       if (tools.message) {
         hud.flash(tools.message);
         tools.message = null;
+      }
+      if (tools.blast) {
+        effects.explosion(tools.blast.center, tools.blast.radius, player.eye);
+        tools.blast = null;
       }
     }
     input.endFrame();
@@ -138,7 +150,7 @@ async function main() {
     store.tick();
 
     // Camera
-    camera.position.copy(player.eye);
+    camera.position.copy(player.eye).add(effects.update(dt));
     player.orientation(camera.quaternion);
     const alt = player.altitude;
     terrain.update(camera.position);
@@ -161,7 +173,7 @@ async function main() {
     surfaceAt(up.x, up.y, up.z, surf);
     hud.setSlot(tools.slot, tools.materialName);
     hud.setTools(TOOLS.map((t) => t.name), tools.tool);
-    hud.setBrush(`${tools.describe()} · ${player.noclip ? 'no-clip' : player.flying ? 'flying' : 'walking'}`);
+    hud.setBrush(`${tools.materialName} · ${tools.describe()} · ${player.noclip ? 'no-clip' : player.flying ? 'flying' : 'walking'}`);
     const lat = Math.asin(up.y) * (180 / Math.PI);
     const lon = Math.atan2(up.x, up.z) * (180 / Math.PI);
     hud.setLocation(
@@ -175,7 +187,7 @@ async function main() {
       hud.setDebug(
         `${fps} fps · ${(terrain.triangles / 1e6).toFixed(2)}M tris · ${terrain.meshCount} meshes` +
           (terrain.pendingJobs ? ` · ${terrain.pendingJobs} jobs` : '') + ` · ${store.size} cached` +
-          (physics.bodies.length ? ` · ${physics.bodies.length} falling` : ''),
+          (physics.bodies.length ? ` · ${physics.bodies.length} falling` : '') + (physics.enabled ? '' : ' · physics off'),
       );
     }
 
