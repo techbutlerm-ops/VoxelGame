@@ -14,6 +14,8 @@ import * as BuildGrid from './tools/BuildGrid';
 import { Hud } from './ui/Hud';
 import { Physics } from './physics/Physics';
 import { Effects } from './render/Effects';
+import { Mode, RESOURCES, RESOURCE_NAMES, Survival } from './game/Survival';
+import { HOTBAR } from './world/materials';
 import './style.css';
 
 async function main() {
@@ -99,19 +101,52 @@ async function main() {
   console.info(`Terrain ready in ${Math.round(performance.now() - t0)} ms (${terrain.meshCount} meshes, ${terrain.jobsDone} jobs, ${Math.round(terrain.jobMs / Math.max(1, terrain.jobsDone))} ms/job, ${workers} workers)`);
   player.spawnAt(spawn.dir, spawn.h + 2);
 
+  // --- Survival / creative ---
+  const survival = new Survival();
+  tools.survival = survival;
+  const deathEl = document.getElementById('death')!;
+  const setMode = (mode: Mode) => {
+    survival.mode = mode;
+    player.canFly = mode === 'creative';
+    document.body.classList.toggle('creative', mode === 'creative');
+    hud.setMode(mode === 'creative' ? 'Creative · M for survival' : 'Survival · M for creative');
+  };
+  setMode('survival');
+
   const input = new Input(canvas, (active) => {
-    overlay.classList.toggle('hidden', active);
+    overlay.classList.toggle('hidden', active || survival.dead);
     document.body.classList.toggle('playing', active);
   });
+  const creativeBtn = document.getElementById('start-creative') as HTMLButtonElement;
   startBtn.disabled = false;
-  startBtn.textContent = 'Click to play';
+  creativeBtn.disabled = false;
+  startBtn.textContent = 'Play survival';
   loadLabel.textContent = `Ready · seed ${seed}`;
-  startBtn.addEventListener('click', () => input.engage());
+  let started = false;
+  const begin = (mode: Mode) => {
+    if (!started) {
+      setMode(mode);
+      started = true;
+      // From now on the overlay is the pause screen.
+      startBtn.textContent = 'Resume';
+      creativeBtn.hidden = true;
+      document.getElementById('mode-hint')!.hidden = true;
+    }
+    input.engage();
+  };
+  startBtn.addEventListener('click', () => begin(survival.mode === 'creative' && started ? 'creative' : 'survival'));
+  creativeBtn.addEventListener('click', () => begin('creative'));
   canvas.addEventListener('click', () => {
-    if (!input.active) input.engage();
+    if (!input.active && started && !survival.dead) input.engage();
+  });
+  document.getElementById('respawn')!.addEventListener('click', () => {
+    survival.respawn();
+    player.spawnAt(spawn.dir, spawn.h + 2);
+    deathEl.classList.add('hidden');
+    input.engage();
   });
 
-  Object.assign(window as unknown as Record<string, unknown>, { game: { store, terrain, player, tools, physics, input, camera, scene, renderer, raycast, BuildGrid, THREE, planet } });
+  Object.assign(window as unknown as Record<string, unknown>, { game: { store, terrain, player, tools, physics, survival, input, camera, scene, renderer, raycast, BuildGrid, THREE, planet } });
 
   // --- Loop ---
   const surf: Surface = { h: 0, biome: 0, top: 0, sub: 0, temp: 0, moist: 0 };
@@ -123,11 +158,16 @@ async function main() {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-    if (input.active) {
+    if (input.active && !survival.dead) {
       if (input.pressed.has('KeyH')) hud.toggleHelp();
+      if (input.pressed.has('KeyM')) {
+        setMode(survival.creative ? 'survival' : 'creative');
+        hud.flash(survival.creative ? 'Creative mode' : 'Survival mode');
+      }
       const wasFlying = player.flying, wasNoclip = player.noclip;
       const before = player.pos.clone();
       player.update(dt, input);
+      survival.impact(player.impact, player.hitByDebris ? 'crushed by falling debris' : 'hit the ground too hard');
       if (!player.flying) distanceWalked += before.distanceTo(player.pos);
       if (wasNoclip !== player.noclip) hud.flash(player.noclip ? 'No-clip ON' : 'No-clip OFF');
       else if (wasFlying !== player.flying) hud.flash(player.flying ? 'Fly mode ON' : 'Fly mode OFF');
@@ -147,6 +187,14 @@ async function main() {
     }
     input.endFrame();
     physics.update(dt);
+    survival.update(dt);
+    hud.hurt(survival.hurt, dt);
+    survival.hurt = 0;
+    if (survival.dead && deathEl.classList.contains('hidden')) {
+      document.getElementById('death-cause')!.textContent = `You ${survival.deathCause}.`;
+      deathEl.classList.remove('hidden');
+      input.release();
+    }
     store.tick();
 
     // Camera
@@ -172,6 +220,9 @@ async function main() {
     // HUD
     surfaceAt(up.x, up.y, up.z, surf);
     hud.setSlot(tools.slot, tools.materialName);
+    hud.setHealth(survival.health, survival.maxHealth);
+    hud.setCounts(HOTBAR.map((m) => survival.affordable(m)));
+    hud.setInventory(RESOURCES.map((r) => [RESOURCE_NAMES[r], survival.inventory.get(r) ?? 0]));
     hud.setTools(TOOLS.map((t) => t.name), tools.tool);
     hud.setBrush(`${tools.materialName} · ${tools.describe()} · ${player.noclip ? 'no-clip' : player.flying ? 'flying' : 'walking'}`);
     const lat = Math.asin(up.y) * (180 / Math.PI);

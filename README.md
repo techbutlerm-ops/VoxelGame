@@ -29,12 +29,37 @@ npm run build:single   # one self-contained HTML file in dist-single/index.html
 URL options: `?seed=anything` picks a different planet; `?workers=0` forces main-thread
 generation (for debugging).
 
+## Survival and creative
+
+The start screen offers both modes; **M** switches between them in game.
+
+- **Survival.** 100 health that regenerates after a few seconds without damage. Hard impacts
+  hurt: a fall of more than about 3 m (12 m is fatal), being hit by falling debris, or being
+  slammed into the ground by a blast. Being near a blast also hurts. Digging collects raw
+  resources, and building spends them:
+
+  | Build with | Costs per voxel |
+  | --- | --- |
+  | Dirt, Stone, Sand | 1 of the same |
+  | Stone Block | 1 Stone |
+  | Planks | ½ Wood |
+  | Brick, Clay | 1 Dirt |
+  | Concrete | ½ Stone + ½ Sand |
+  | Glass | 1 Sand |
+  | Metal | 2 Basalt (the dark stone ~40 m down) |
+  | Blast charge | 10 Stone + 10 Sand |
+
+  Grass and soil give Dirt, sandstone gives Stone, and tree trunks give Wood. Removing your own
+  builds refunds their cost, and rubble refunds half. Flying and undo are off.
+- **Creative.** No damage, unlimited materials, flying (F), no-clip (N) and undo (Ctrl+Z).
+
 ## Controls
 
 | Input | Action |
 | --- | --- |
 | WASD / Space / Shift | Move / jump / sprint |
-| F / N | Fly mode (speed scales with altitude) / no-clip |
+| F / N | Fly mode (speed scales with altitude) / no-clip (creative) |
+| M | Switch survival / creative |
 | C | Fly down |
 | T, Shift+T | Next / previous tool |
 | Right mouse | Place a piece / add terrain |
@@ -44,7 +69,7 @@ generation (for debugging).
 | G | Grid size: 0.25, 0.5, 1 or 2 m |
 | R | Rotate walls and ramps |
 | 1–0, Q/E | Select material |
-| Ctrl+Z | Undo (including any collapse it caused) |
+| Ctrl+Z | Undo, including any collapse it caused (creative) |
 | P | Structural physics on/off |
 | H | Help |
 
@@ -101,6 +126,7 @@ sharp edges and flat faces. Natural materials (dirt, stone, sand) stay smooth.
 | `src/physics/Stress.ts` | Span-based structural stress for construction materials |
 | `src/physics/Physics.ts` | Rigid bodies for falling pieces: mass/inertia, contacts with terrain, other debris and the player, shattering, explosions, settling back into voxels |
 | `src/render/Effects.ts` | Explosion flash and camera shake |
+| `src/game/Survival.ts` | Health, damage, resource inventory, building recipes and refunds |
 | `src/render/` | Terrain material (procedural detail), sky dome, camera-centered ocean |
 
 Units are voxels throughout (1 voxel = 0.25 m). Chunks are 32³ voxels at LOD 0; each LOD level

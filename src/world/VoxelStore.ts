@@ -151,8 +151,12 @@ export class VoxelStore {
    */
   edit(
     min: [number, number, number], max: [number, number, number], op: EditOp,
-  ): { changed: number; removed: number[]; added: number[]; dirty: Set<number>; undo: UndoRecord | null } {
+  ): { changed: number; removed: number[]; added: number[]; addedMats: Map<number, number>; replaced: number[]; dirty: Set<number>; undo: UndoRecord | null } {
     let changed = 0;
+    /** How many voxels of each material became solid or were converted to it (building cost). */
+    const addedMats = new Map<number, number>();
+    /** Old materials of solid voxels converted to another material (as if dug out). */
+    const replaced: number[] = [];
     /** Flat x,y,z list of voxels that went from solid to air (seeds for the support check). */
     const removed: number[] = [];
     /** Flat x,y,z list of voxels that went from air to solid. */
@@ -179,18 +183,50 @@ export class VoxelStore {
           if ((oldQ > 128) !== (q > 128)) {
             changed++;
             if (oldQ > 128) removed.push(x, y, z);
-            else added.push(x, y, z);
+            else {
+              added.push(x, y, z);
+              addedMats.set(out.m, (addedMats.get(out.m) ?? 0) + 1);
+            }
+          } else if (q > 128 && out.m !== oldM) {
+            addedMats.set(out.m, (addedMats.get(out.m) ?? 0) + 1);
+            replaced.push(oldM);
           }
           c.density![i] = q;
           c.material![i] = out.m;
         }
 
-    if (!record.chunks.size) return { changed, removed, added, dirty: new Set(), undo: null };
+    if (!record.chunks.size) return { changed, removed, added, addedMats, replaced, dirty: new Set(), undo: null };
     for (const c of record.chunks.keys()) {
       c.edited = true;
       this.edited.add(chunkKey(c.ox / CHUNK, c.oy / CHUNK, c.oz / CHUNK));
     }
-    return { changed, removed, added, dirty: this.dirtyAround(x0, y0, z0, x1, y1, z1), undo: record };
+    return { changed, removed, added, addedMats, replaced, dirty: this.dirtyAround(x0, y0, z0, x1, y1, z1), undo: record };
+  }
+
+  /**
+   * Materials (and counts) an edit would turn solid or convert, without changing anything.
+   * `replaced` collects the old materials of converted voxels.
+   */
+  preview(min: [number, number, number], max: [number, number, number], op: EditOp, replaced: number[] = []): Map<number, number> {
+    const mats = new Map<number, number>();
+    const out = { d: 0, m: 0 };
+    const x0 = Math.floor(min[0]), y0 = Math.floor(min[1]), z0 = Math.floor(min[2]);
+    const x1 = Math.ceil(max[0]), y1 = Math.ceil(max[1]), z1 = Math.ceil(max[2]);
+    for (let z = z0; z <= z1; z++)
+      for (let y = y0; y <= y1; y++)
+        for (let x = x0; x <= x1; x++) {
+          const d = this.density(x, y, z);
+          if (!op(x, y, z, d, this.material(x, y, z), out)) continue;
+          const q = quantize(Math.max(-DENSITY_CLAMP, Math.min(DENSITY_CLAMP, out.d)));
+          const m = this.material(x, y, z);
+          if (q <= 128) continue;
+          if (d <= 0) mats.set(out.m, (mats.get(out.m) ?? 0) + 1);
+          else if (out.m !== m) {
+            mats.set(out.m, (mats.get(out.m) ?? 0) + 1);
+            replaced.push(m);
+          }
+        }
+    return mats;
   }
 
   /** Restore the voxels an edit changed. Returns the chunks to remesh. */

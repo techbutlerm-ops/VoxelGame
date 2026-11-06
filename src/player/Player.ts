@@ -26,6 +26,12 @@ export class Player {
   pitch = 0;
   onGround = false;
   flying = false;
+  /** Flying and no-clip are allowed (creative mode). */
+  canFly = true;
+  /** Hardest collision this frame: velocity (voxels/s) stopped by terrain or debris. */
+  impact = 0;
+  /** Whether the hardest hit this frame came from falling debris. */
+  hitByDebris = false;
   noclip = false;
   readonly groundNormal = new THREE.Vector3();
   private stepSmooth = 0;
@@ -125,11 +131,17 @@ export class Player {
     if (input.lookDX) this.heading.applyAxisAngle(this.up, -input.lookDX * sens);
     this.pitch = THREE.MathUtils.clamp(this.pitch - input.lookDY * sens, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
 
-    if (input.pressed.has('KeyF')) {
+    this.impact = 0;
+    this.hitByDebris = false;
+    if (!this.canFly) {
+      this.flying = false;
+      this.noclip = false;
+    }
+    if (input.pressed.has('KeyF') && this.canFly) {
       this.flying = !this.flying;
       if (!this.flying) this.noclip = false;
     }
-    if (input.pressed.has('KeyN')) {
+    if (input.pressed.has('KeyN') && this.canFly) {
       this.noclip = !this.noclip;
       if (this.noclip) this.flying = true;
     }
@@ -211,7 +223,10 @@ export class Player {
         const ndotup = n.dot(this.up);
         this.pos.addScaledVector(n, Math.min(pen, 1.5));
         const vn = this.vel.dot(n);
-        if (vn < 0) this.vel.addScaledVector(n, -vn);
+        if (vn < 0) {
+          this.vel.addScaledVector(n, -vn);
+          if (-vn > this.impact) { this.impact = -vn; this.hitByDebris = false; }
+        }
         if (ndotup > 0.55) {
           this.onGround = true;
           this.groundNormal.copy(n);
@@ -228,7 +243,10 @@ export class Player {
       for (const off of [r, PLAYER.height / 2, PLAYER.height - r]) {
         const c = this.pos.clone().addScaledVector(this.up, off);
         const before = c.clone();
+        const v0 = this.vel.clone();
         const n = this.obstacles.resolveSphere(c, r, this.vel, PLAYER_MASS);
+        const dv = this.vel.distanceTo(v0);
+        if (dv > this.impact) { this.impact = dv; this.hitByDebris = true; }
         if (!n) continue;
         this.pos.add(c.sub(before));
         if (n.dot(this.up) > 0.55) {

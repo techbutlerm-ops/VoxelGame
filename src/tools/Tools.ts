@@ -3,6 +3,7 @@ import { PLAYER, toMeters } from '../config';
 import { HOTBAR, MATERIALS, MATERIAL_CONSTRUCT, hexColor } from '../world/materials';
 import { EditOp, UndoRecord, VoxelStore } from '../world/VoxelStore';
 import type { Physics } from '../physics/Physics';
+import { BLAST_COST, Survival } from '../game/Survival';
 import { Terrain } from '../world/Terrain';
 import { Player } from '../player/Player';
 import { Input } from '../player/Input';
@@ -98,6 +99,8 @@ export class Tools {
   private undoStack: UndoEntry[] = [];
   /** Structural physics; when set, removing material can make unsupported parts fall. */
   physics: Physics | null = null;
+  /** Survival rules (inventory costs, damage); when null everything is free. */
+  survival: Survival | null = null;
   private cooldown = 0;
   lastChanged = 0;
   /** Messages for the HUD (e.g. "Undone"); consumed by main. */
@@ -180,6 +183,7 @@ export class Tools {
   }
 
   update(dt: number, input: Input) {
+    this.message = null;
     const k = input.pressed;
     const digits = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0'];
     digits.forEach((key, i) => {
@@ -307,6 +311,7 @@ export class Tools {
           };
       min = c.clone().subScalar(r + 4);
       max = c.clone().addScalar(r + 4);
+      if (mode === 'dig') return this.commit(min, max, op, false);
     } else if (id === 'blast') {
       return this.detonate(hit.point.clone().addScaledVector(hit.normal, -this.radius * 0.3), this.radius);
     } else if (id === 'flatten') {
@@ -355,11 +360,31 @@ export class Tools {
           return true;
         };
     const { min, max } = worldBounds(piece, 3);
-    return this.commit(min, max, op);
+    return this.commit(min, max, op, mode === 'build');
   }
 
-  private commit(min: THREE.Vector3, max: THREE.Vector3, op: EditOp): number {
-    const { changed, removed, added, dirty, undo } = this.store.edit([min.x, min.y, min.z], [max.x, max.y, max.z], op);
+  private commit(min: THREE.Vector3, max: THREE.Vector3, op: EditOp, mayAdd = true): number {
+    const lo: [number, number, number] = [min.x, min.y, min.z], hi: [number, number, number] = [max.x, max.y, max.z];
+    const sv = this.survival;
+    // Survival: placing material costs resources; check before changing anything.
+    let cost: Map<number, number> | null = null;
+    if (sv && !sv.creative && mayAdd) {
+      cost = sv.cost(this.store.preview(lo, hi, op));
+      const missing = sv.check(cost);
+      if (missing) {
+        this.message = missing;
+        return 0;
+      }
+    }
+    const { changed, removed, added, addedMats, replaced, dirty, undo } = this.store.edit(lo, hi, op);
+    if (undo && sv && !sv.creative) {
+      // Charge what was actually placed (also covers converting existing ground to the new
+      // material); what was dug out or converted away is collected.
+      sv.pay(sv.cost(addedMats));
+      const dug: number[] = replaced.slice();
+      for (let i = 0; i < removed.length; i += 3) dug.push(this.store.material(removed[i], removed[i + 1], removed[i + 2]));
+      sv.collect(dug);
+    }
     if (undo) {
       this.terrain.remesh(dirty);
       const entry: UndoEntry = { records: [undo] };
@@ -378,6 +403,15 @@ export class Tools {
 
   /** Set off an explosion: crater, flying rubble, collapse around it, and a shove for the player. */
   detonate(center: THREE.Vector3, radius: number): number {
+    const sv = this.survival;
+    if (sv && !sv.creative) {
+      const missing = sv.check(BLAST_COST);
+      if (missing) {
+        this.message = `${missing} for a charge`;
+        return 0;
+      }
+      sv.pay(BLAST_COST);
+    }
     this.blast = { center: center.clone(), radius };
     if (!this.physics) return 0;
     const { records, bodies } = this.physics.explode(center, radius);
@@ -389,6 +423,7 @@ export class Tools {
     const away = this.player.eye.sub(center);
     const dist = away.length();
     const reach = radius * 5;
+    if (dist < radius * 3) sv?.damage(90 * (1 - dist / (radius * 3)) * Math.min(1.5, radius / 6), 'caught in a blast');
     if (dist < reach) {
       this.player.vel.addScaledVector(away.normalize(), 45 * (1 - dist / reach));
       this.player.vel.addScaledVector(this.player.up, 10 * (1 - dist / reach));
@@ -410,6 +445,10 @@ export class Tools {
   }
 
   undo() {
+    if (this.survival && !this.survival.creative) {
+      this.message = 'Undo is only available in creative mode';
+      return;
+    }
     const entry = this.undoStack.pop();
     if (!entry) {
       this.message = 'Nothing to undo';

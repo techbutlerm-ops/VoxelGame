@@ -11,16 +11,24 @@ export class Hud {
   private help = document.getElementById('help')!;
   private toast = document.getElementById('toast')!;
   private slots: HTMLElement[] = [];
+  private counts: HTMLElement[] = [];
+  private healthFill = document.getElementById('health-fill')!;
+  private healthText = document.getElementById('health-text')!;
+  private modeEl = document.getElementById('mode')!;
+  private inventory = document.getElementById('inventory')!;
+  private hurtEl = document.getElementById('hurt')!;
+  private hurtLevel = 0;
   private toastTimer = 0;
 
   constructor() {
     HOTBAR.forEach((id, i) => {
       const el = document.createElement('div');
       el.className = 'slot';
-      el.innerHTML = `<span class="swatch" style="background:${hexColor(id)}"></span><span class="key">${(i + 1) % 10}</span>`;
+      el.innerHTML = `<span class="swatch" style="background:${hexColor(id)}"></span><span class="key">${(i + 1) % 10}</span><span class="count"></span>`;
       el.title = MATERIALS[id].name;
       this.hotbar.appendChild(el);
       this.slots.push(el);
+      this.counts.push(el.querySelector('.count') as HTMLElement);
     });
   }
 
@@ -40,6 +48,36 @@ export class Hud {
   setSlot(slot: number, name: string) {
     this.slots.forEach((el, i) => el.classList.toggle('active', i === slot));
     this.hotbar.dataset.name = name;
+  }
+
+  /** How many voxels of each hotbar material you can afford (Infinity in creative). */
+  setCounts(counts: number[]) {
+    counts.forEach((n, i) => {
+      const text = Number.isFinite(n) ? compact(n) : '';
+      if (this.counts[i].textContent !== text) this.counts[i].textContent = text;
+      this.slots[i].classList.toggle('empty', n === 0);
+    });
+  }
+
+  setHealth(health: number, max: number) {
+    this.healthFill.style.width = `${(health / max) * 100}%`;
+    const t = `${Math.ceil(health)} / ${max}`;
+    if (this.healthText.textContent !== t) this.healthText.textContent = t;
+  }
+
+  setMode(text: string) {
+    if (this.modeEl.textContent !== text) this.modeEl.textContent = text;
+  }
+
+  setInventory(rows: [string, number][]) {
+    const html = rows.map(([name, n]) => `<span>${name}</span><span class="n">${compact(n)}</span>`).join('');
+    if (this.inventory.innerHTML !== html) this.inventory.innerHTML = html;
+  }
+
+  /** Red vignette that flares with damage and fades out. */
+  hurt(amount: number, dt: number) {
+    this.hurtLevel = Math.min(1, this.hurtLevel + amount / 30) * Math.exp(-dt * 2.5);
+    this.hurtEl.style.opacity = this.hurtLevel.toFixed(3);
   }
 
   setBrush(text: string) {
@@ -64,4 +102,10 @@ export class Hud {
     clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => this.toast.classList.remove('show'), 1400);
   }
+}
+
+/** 1234 -> "1.2k". */
+function compact(n: number): string {
+  n = Math.floor(n);
+  return n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }

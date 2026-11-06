@@ -19,6 +19,20 @@
       <div id="hotbar"></div>
     </div>
     <div id="toast"></div>
+    <div id="hurt"></div>
+    <div id="vitals">
+      <div id="health"><div id="health-fill"></div><span id="health-text"></span></div>
+      <div id="mode"></div>
+    </div>
+    <div id="inventory"></div>
+
+    <div id="death" class="hidden">
+      <div class="panel">
+        <h1>You died</h1>
+        <p class="tag" id="death-cause"></p>
+        <button id="respawn">Respawn</button>
+      </div>
+    </div>
 
     <aside id="help" class="hidden">
       <h2>Controls</h2>
@@ -27,7 +41,7 @@
         <dt>Space</dt><dd>Jump / fly up</dd>
         <dt>Shift</dt><dd>Sprint</dd>
         <dt>C</dt><dd>Fly down</dd>
-        <dt>F / N</dt><dd>Fly mode / no-clip</dd>
+        <dt>F / N</dt><dd>Fly mode / no-clip (creative)</dd>
         <dt>T, Shift+T</dt><dd>Next / previous tool</dd>
         <dt>Right mouse</dt><dd>Place piece / add terrain</dd>
         <dt>Left mouse</dt><dd>Remove piece / dig</dd>
@@ -36,8 +50,9 @@
         <dt>G</dt><dd>Grid size (0.25–2 m)</dd>
         <dt>R</dt><dd>Rotate wall / ramp</dd>
         <dt>1–0, Q / E</dt><dd>Select material</dd>
-        <dt>Ctrl+Z</dt><dd>Undo (also undoes collapses)</dd>
+        <dt>Ctrl+Z</dt><dd>Undo, including collapses (creative)</dd>
         <dt>P</dt><dd>Structural physics on / off</dd>
+        <dt>M</dt><dd>Switch survival / creative</dd>
         <dt>H</dt><dd>Toggle this help</dd>
         <dt>Esc</dt><dd>Release mouse</dd>
       </dl>
@@ -49,7 +64,11 @@
         <p class="tag">A round, fully destructible world 6&nbsp;km in radius. Walk all the way around it, dig under it, build over it, and watch what you undercut come crashing down.</p>
         <div class="load"><div id="load-bar"></div></div>
         <p id="load-label">Starting…</p>
-        <button id="start" disabled>Loading…</button>
+        <div class="buttons">
+          <button id="start" disabled>Loading…</button>
+          <button id="start-creative" class="secondary" disabled>Creative</button>
+        </div>
+        <p class="hint" id="mode-hint">Survival: dig to gather resources, build with them, mind your health. Creative: fly, unlimited materials, undo.</p>
         <div class="keys">
           <span><kbd>WASD</kbd> move</span>
           <span><kbd>F</kbd> fly</span>
