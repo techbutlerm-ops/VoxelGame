@@ -18,6 +18,23 @@ export interface Overlay {
 
 export type VolumeKind = 'air' | 'solid' | 'mixed';
 
+/** Height lattice of the last generated chunk (used to find how deep mesh vertices are). */
+export let lastLattice: { face: number; da: number; ia0: number; ib0: number; na: number; nb: number; hs: Float32Array } | null = null;
+
+/** Original terrain height (above sea level) under a world point, from the last chunk's lattice. */
+export function latticeHeight(px: number, py: number, pz: number): number | null {
+  const L = lastLattice;
+  if (!L) return null;
+  faceCoordsOn(L.face, px, py, pz, fc);
+  const fa = fc.a / L.da - L.ia0, fb = fc.b / L.da - L.ib0;
+  let gi = Math.floor(fa), gj = Math.floor(fb);
+  gi = gi < 0 ? 0 : gi > L.na - 2 ? L.na - 2 : gi;
+  gj = gj < 0 ? 0 : gj > L.nb - 2 ? L.nb - 2 : gj;
+  const ta = Math.max(0, Math.min(1, fa - gi)), tb = Math.max(0, Math.min(1, fb - gj));
+  const h = L.hs, na = L.na;
+  return (h[gi + gj * na] * (1 - ta) + h[gi + 1 + gj * na] * ta) * (1 - tb) + (h[gi + (gj + 1) * na] * (1 - ta) + h[gi + 1 + (gj + 1) * na] * ta) * tb;
+}
+
 const QUARTER_PI = Math.PI / 4;
 
 // Quantization of stored LOD0 densities: 1/32 voxel steps, clamped to +/-3.97 voxels.
@@ -53,6 +70,7 @@ export function generateVolume(
   const S = SAMPLES;
   const minX = ox - PAD * stride, minY = oy - PAD * stride, minZ = oz - PAD * stride;
   const span = (S - 1) * stride;
+  lastLattice = null;
 
   // --- Quick reject on radial bounds ---
   const { rmin, rmax } = radialRange(minX, minY, minZ, span);
@@ -83,6 +101,7 @@ export function generateVolume(
     nb = Math.ceil(bMax / da) + 2 - ib0;
     grid = new Array(na * nb);
     const hs = new Float32Array(na * nb);
+    lastLattice = { face, da, ia0, ib0, na, nb, hs };
     const px = new Float64Array(na * nb * 3);
     for (let j = 0; j < nb; j++) {
       for (let i = 0; i < na; i++) {

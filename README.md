@@ -29,6 +29,19 @@ npm run build:single   # one self-contained HTML file in dist-single/index.html
 URL options: `?seed=anything` picks a different planet; `?workers=0` forces main-thread
 generation (for debugging).
 
+## Day, night and light
+
+The sun circles the planet once every 20 minutes, so local time depends on where you are: the
+far side of the planet is in night, and with the sun's tilted path the poles get midnight sun
+or polar night. The HUD shows local time; **O** skips ahead 3 hours. Dusk paints the horizon,
+night brings stars and moonlight, and exposure adapts.
+
+Caves are dark: each mesh vertex carries a baked "sky exposure" (how far below the original
+surface it is, and whether rock covers it), and sun, moon and sky light fade with it. Open pits
+and shafts stay lit. Bring light with the **Lamp** tool (a glowing block with a point light;
+2 wood + 2 stone in survival, refunded when removed) or the flashlight (**L**). The nearest six
+lamps are lit; the light count is fixed so shaders never recompile.
+
 ## Survival and creative
 
 The start screen offers both modes; **M** switches between them in game.
@@ -47,6 +60,7 @@ The start screen offers both modes; **M** switches between them in game.
   | Concrete | ½ Stone + ½ Sand |
   | Glass | 1 Sand |
   | Metal | 2 Basalt (the dark stone ~40 m down) |
+  | Lamp | 2 Wood + 2 Stone (per lamp) |
   | Blast charge | 10 Stone + 10 Sand |
 
   Grass and soil give Dirt, sandstone gives Stone, and tree trunks give Wood. Removing your own
@@ -60,6 +74,8 @@ The start screen offers both modes; **M** switches between them in game.
 | WASD / Space / Shift | Move / jump / sprint |
 | F / N | Fly mode (speed scales with altitude) / no-clip (creative) |
 | M | Switch survival / creative |
+| L | Flashlight |
+| O | Skip 3 hours |
 | C | Fly down |
 | T, Shift+T | Next / previous tool |
 | Right mouse | Place a piece / add terrain |
@@ -126,6 +142,7 @@ sharp edges and flat faces. Natural materials (dirt, stone, sand) stay smooth.
 | `src/physics/Stress.ts` | Span-based structural stress for construction materials |
 | `src/physics/Physics.ts` | Rigid bodies for falling pieces: mass/inertia, contacts with terrain, other debris and the player, shattering, explosions, settling back into voxels |
 | `src/render/Effects.ts` | Explosion flash and camera shake |
+| `src/render/DayNight.ts` | Sun/moon orbit and local time, lamp light pool, flashlight |
 | `src/game/Survival.ts` | Health, damage, resource inventory, building recipes and refunds |
 | `src/render/` | Terrain material (procedural detail), sky dome, camera-centered ocean |
 

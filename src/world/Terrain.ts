@@ -186,6 +186,7 @@ export class Terrain {
         position: new THREE.BufferAttribute(r.mesh.positions, 3),
         normal: new THREE.BufferAttribute(r.mesh.normals, 3),
         color: new THREE.BufferAttribute(r.mesh.colors, 3),
+        light: new THREE.BufferAttribute(r.mesh.light, 2),
       }, r.mesh.indices, this.material);
       n.mesh.castShadow = n.level <= 1;
       n.mesh.receiveShadow = true;

@@ -41,6 +41,7 @@ export const M = {
   CLAY: 21,
   ICE: 22,
   STONE_BLOCK: 23,
+  LAMP: 24,
 } as const;
 
 const defs: Omit<Material, 'id'>[] = [];
@@ -68,6 +69,7 @@ def(M.METAL, { construct: true, strength: 32, name: 'Metal', color: 0x9aa4ae, de
 def(M.GLASS, { construct: true, strength: 4, name: 'Glass', color: 0xc4e6f0, density: 2.5, buildable: true });
 def(M.CLAY, { construct: true, strength: 8, name: 'Clay', color: 0xb5795a, density: 1.8, buildable: true });
 def(M.ICE, { name: 'Ice', color: 0xbcdcea, density: 0.9, buildable: false });
+def(M.LAMP, { construct: true, strength: 4, name: 'Lamp', color: 0xffd58a, density: 1.2, buildable: false });
 def(M.STONE_BLOCK, { construct: true, strength: 10, name: 'Stone Block', color: 0x9c9890, density: 2.6, buildable: true });
 
 /** Rubble: broken construction material keeps its color (a little darker) but meshes smooth. */

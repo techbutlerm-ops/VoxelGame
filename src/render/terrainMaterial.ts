@@ -1,14 +1,19 @@
 import * as THREE from 'three';
 
 /**
- * Vertex-colored standard material with procedural, world-space detail: two octaves of value
- * noise break up flat color the way a painted texture would, without any image assets.
+ * Vertex-colored standard material for terrain and debris.
+ * - Procedural, world-space detail: two octaves of value noise break up flat color the way a
+ *   painted texture would, without any image assets.
+ * - A per-vertex `light` attribute (sky exposure, glow): sun, moon and sky light fade with sky
+ *   exposure so caves are dark, while lamps and the flashlight still light everything; lamp
+ *   blocks glow.
  */
 export function createTerrainMaterial(): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWorldPos;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWorldPos;\nattribute vec2 light;\nvarying vec2 vLight;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLight = light;')
       .replace(
         '#include <worldpos_vertex>',
         '#include <worldpos_vertex>\nvWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
@@ -18,6 +23,7 @@ export function createTerrainMaterial(): THREE.MeshStandardMaterial {
         '#include <common>',
         `#include <common>
 varying vec3 vWorldPos;
+varying vec2 vLight;
 float vhash(vec3 p) {
   p = fract(p * 0.3183099 + 0.1);
   p *= 17.0;
@@ -44,6 +50,20 @@ float vnoise(vec3 x) {
   diffuseColor.rgb *= 0.86 + 0.22 * n;
   diffuseColor.rgb *= 0.92 + 0.16 * broad;
 }`,
+      )
+      // Sun and moon (directional) fade underground; shadows handle occlusion near the player.
+      .replace(
+        'getDirectionalLightInfo( directionalLight, directLight );',
+        'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= mix( 0.06, 1.0, vLight.x );',
+      )
+      // Sky light (hemisphere) fades underground.
+      .replace(
+        'irradiance += getHemisphereLightIrradiance( hemisphereLights[ i ], geometryNormal );',
+        'irradiance += getHemisphereLightIrradiance( hemisphereLights[ i ], geometryNormal ) * mix( 0.03, 1.0, vLight.x );',
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vLight.y * 2.2;',
       );
   };
   return mat;

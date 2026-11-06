@@ -14,8 +14,9 @@ import * as BuildGrid from './tools/BuildGrid';
 import { Hud } from './ui/Hud';
 import { Physics } from './physics/Physics';
 import { Effects } from './render/Effects';
+import { DayNight, LightPool } from './render/DayNight';
 import { Mode, RESOURCES, RESOURCE_NAMES, Survival } from './game/Survival';
-import { HOTBAR } from './world/materials';
+import { HOTBAR, M } from './world/materials';
 import './style.css';
 
 async function main() {
@@ -40,7 +41,12 @@ async function main() {
   scene.fog = fog;
 
   const sky = new Sky();
-  scene.add(sky.mesh);
+  scene.add(sky.mesh, sky.stars);
+  const moonLight = new THREE.DirectionalLight(0x9fb6ff, 0);
+  scene.add(moonLight, moonLight.target);
+  const lights = new LightPool();
+  scene.add(lights.group);
+  const dayNight = new DayNight();
   const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6a5a45, 1.1);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
@@ -83,7 +89,7 @@ async function main() {
   tools.physics = physics;
   player.obstacles = physics;
   scene.add(physics.group);
-  const effects = new Effects();
+  const effects = new Effects(lights.flash);
   scene.add(effects.group);
   const hud = new Hud();
 
@@ -100,6 +106,8 @@ async function main() {
   }
   console.info(`Terrain ready in ${Math.round(performance.now() - t0)} ms (${terrain.meshCount} meshes, ${terrain.jobsDone} jobs, ${Math.round(terrain.jobMs / Math.max(1, terrain.jobsDone))} ms/job, ${workers} workers)`);
   player.spawnAt(spawn.dir, spawn.h + 2);
+  dayNight.setLocalHour(spawn.dir, 8.5);
+  tools.onLamp = (p) => lights.addLamp(p);
 
   // --- Survival / creative ---
   const survival = new Survival();
@@ -146,7 +154,7 @@ async function main() {
     input.engage();
   });
 
-  Object.assign(window as unknown as Record<string, unknown>, { game: { store, terrain, player, tools, physics, survival, input, camera, scene, renderer, raycast, BuildGrid, THREE, planet } });
+  Object.assign(window as unknown as Record<string, unknown>, { game: { store, terrain, player, tools, physics, survival, dayNight, lights, input, camera, scene, renderer, raycast, BuildGrid, THREE, planet } });
 
   // --- Loop ---
   const surf: Surface = { h: 0, biome: 0, top: 0, sub: 0, temp: 0, moist: 0 };
@@ -172,6 +180,14 @@ async function main() {
       if (wasNoclip !== player.noclip) hud.flash(player.noclip ? 'No-clip ON' : 'No-clip OFF');
       else if (wasFlying !== player.flying) hud.flash(player.flying ? 'Fly mode ON' : 'Fly mode OFF');
       tools.update(dt, input);
+      if (input.pressed.has('KeyO')) {
+        dayNight.advance(3);
+        hud.flash(`Time skipped to ${dayNight.clock(player.up)}`);
+      }
+      if (input.pressed.has('KeyL')) {
+        lights.flashlightOn = !lights.flashlightOn;
+        hud.flash(lights.flashlightOn ? 'Flashlight on' : 'Flashlight off');
+      }
       if (input.pressed.has('KeyP')) {
         physics.enabled = !physics.enabled;
         hud.flash(physics.enabled ? 'Structural physics ON' : 'Structural physics OFF (creative)');
@@ -204,17 +220,32 @@ async function main() {
     terrain.update(camera.position);
     ocean.update(camera.position);
 
-    // Sun stays at a pleasant mid-morning angle relative to the local horizon.
+    // Day and night: the sun circles the planet; light, sky and exposure follow its elevation.
+    dayNight.update(dt);
     const up = player.up;
-    const east = new THREE.Vector3(0, 1, 0).cross(up);
-    if (east.lengthSq() < 1e-4) east.set(1, 0, 0);
-    east.normalize();
-    sunDir.copy(up).multiplyScalar(0.72).addScaledVector(east, 0.55).addScaledVector(new THREE.Vector3().crossVectors(up, east), 0.42).normalize();
+    sunDir.copy(dayNight.sun);
+    const elev = sunDir.dot(up);
+    const day = THREE.MathUtils.smoothstep(elev, -0.18, 0.22);
+    sun.intensity = 2.6 * THREE.MathUtils.smoothstep(elev, -0.03, 0.12);
+    sun.color.copy(SUNSET_LIGHT).lerp(NOON_LIGHT, THREE.MathUtils.smoothstep(elev, 0, 0.35));
     sun.position.copy(player.pos).addScaledVector(sunDir, 600);
     sun.target.position.copy(player.pos);
+    const moonDir = dayNight.moon;
+    // (MathUtils.smoothstep needs min < max, so "fades in as the sun sets" is 1 - smoothstep.)
+    moonLight.intensity = 0.7 * (1 - THREE.MathUtils.smoothstep(elev, -0.15, 0.1)) * THREE.MathUtils.smoothstep(moonDir.dot(up), -0.05, 0.15);
+    moonLight.position.copy(player.pos).addScaledVector(moonDir, 600);
+    moonLight.target.position.copy(player.pos);
     hemi.position.copy(up);
-    const horizon = sky.update(camera, up, sunDir);
+    hemi.intensity = 0.32 + 0.78 * day;
+    hemi.color.copy(NIGHT_SKY).lerp(DAY_SKY, day);
+    hemi.groundColor.copy(NIGHT_GROUND).lerp(DAY_GROUND, day);
+    renderer.toneMappingExposure = 1.9 - 0.85 * day;
+    const horizon = sky.update(camera, up, sunDir, moonDir);
     fog.color.copy(horizon);
+    lights.update(camera.position, player.eye, player.forward, (p) => {
+      const x = Math.round(p.x), y = Math.round(p.y), z = Math.round(p.z);
+      return store.material(x, y, z) === M.LAMP && store.solid(x, y, z);
+    });
     fog.density = 0.00032 / (1 + Math.max(0, alt - 200) / 400);
 
     // HUD
@@ -229,7 +260,7 @@ async function main() {
     const lon = Math.atan2(up.x, up.z) * (180 / Math.PI);
     hud.setLocation(
       `${BIOME_NAMES[surf.biome]} · ${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? 'E' : 'W'} · ` +
-        `${toMeters(alt).toFixed(0)} m · walked ${(toMeters(distanceWalked) / 1000).toFixed(2)} km`,
+        `${toMeters(alt).toFixed(0)} m · ${dayNight.clock(up)} · walked ${(toMeters(distanceWalked) / 1000).toFixed(2)} km`,
     );
     fpsAccum += dt; fpsFrames++;
     if (fpsAccum >= 0.5) {
@@ -263,6 +294,13 @@ function findSpawn(): { dir: THREE.Vector3; h: number } {
   }
   return { dir: new THREE.Vector3(1, 0, 0), h: Math.max(0, surfaceAt(1, 0, 0, s).h) };
 }
+
+const NOON_LIGHT = new THREE.Color(0xfff1dc);
+const SUNSET_LIGHT = new THREE.Color(0xff9a5a);
+const DAY_SKY = new THREE.Color(0xcfe3ff);
+const NIGHT_SKY = new THREE.Color(0x3a4f80);
+const DAY_GROUND = new THREE.Color(0x6a5a45);
+const NIGHT_GROUND = new THREE.Color(0x0c0b0a);
 
 function hashString(s: string): number {
   let h = 2166136261;

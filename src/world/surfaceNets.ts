@@ -1,5 +1,5 @@
 import { PAD, SAMPLES } from '../config';
-import { MATERIAL_CLIFF, MATERIAL_CONSTRUCT, MATERIAL_LINEAR } from './materials';
+import { M, MATERIAL_CLIFF, MATERIAL_CONSTRUCT, MATERIAL_LINEAR } from './materials';
 import { hash3 } from './noise';
 import { buildFrameAt } from './planet';
 
@@ -7,6 +7,8 @@ export interface MeshData {
   positions: Float32Array;
   normals: Float32Array;
   colors: Float32Array;
+  /** Per vertex: sky exposure (0 = deep underground, 1 = open sky) and glow (lamps). */
+  light: Float32Array;
   indices: Uint32Array;
 }
 
@@ -18,6 +20,7 @@ const cellVert = new Int32Array(C * C * C);
 let pos = new Float32Array(1 << 16);
 let nrm = new Float32Array(1 << 16);
 let col = new Float32Array(1 << 16);
+let lit = new Float32Array((1 << 16) / 3 * 2);
 let idx = new Uint32Array(1 << 17);
 
 const CORNER = [
@@ -36,6 +39,7 @@ function ensure(nVerts: number, nIdx: number) {
     const p = new Float32Array(n); p.set(pos); pos = p;
     const q = new Float32Array(n); q.set(nrm); nrm = q;
     const c = new Float32Array(n); c.set(col); col = c;
+    const l = new Float32Array((n / 3) * 2); l.set(lit); lit = l;
   }
   if (nIdx > idx.length) {
     const i = new Uint32Array(Math.max(nIdx, idx.length * 2)); i.set(idx); idx = i;
@@ -448,6 +452,8 @@ export function surfaceNets(
         col[o + 1] = (MATERIAL_LINEAR[m3 + 1] * t + MATERIAL_LINEAR[c3 + 1] * (1 - t)) * jitter;
         col[o + 2] = (MATERIAL_LINEAR[m3 + 2] * t + MATERIAL_LINEAR[c3 + 2] * (1 - t)) * jitter;
 
+        lit[vc * 2] = 1;
+        lit[vc * 2 + 1] = bestMat === M.LAMP ? 1 : 0;
         cellVert[ci] = vc++;
       }
     }
@@ -511,6 +517,7 @@ export function surfaceNets(
     positions: pos.slice(0, vc * 3),
     normals: nrm.slice(0, vc * 3),
     colors: col.slice(0, vc * 3),
+    light: lit.slice(0, vc * 2),
     indices: idx.slice(0, ic),
   };
 }
@@ -550,6 +557,8 @@ function flatTri(a: number, b: number, c: number, mat: number, jitter: number, v
     pos[o] = pos[v * 3]; pos[o + 1] = pos[v * 3 + 1]; pos[o + 2] = pos[v * 3 + 2];
     nrm[o] = nx; nrm[o + 1] = ny; nrm[o + 2] = nz;
     col[o] = r; col[o + 1] = g; col[o + 2] = bl;
+    lit[vc * 2] = 1;
+    lit[vc * 2 + 1] = mat === M.LAMP ? 1 : 0;
     vc++;
   }
   return vc;

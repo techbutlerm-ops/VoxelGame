@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PLAYER, toMeters } from '../config';
-import { HOTBAR, MATERIALS, MATERIAL_CONSTRUCT, hexColor } from '../world/materials';
+import { HOTBAR, M, MATERIALS, MATERIAL_CONSTRUCT, hexColor } from '../world/materials';
 import { EditOp, UndoRecord, VoxelStore } from '../world/VoxelStore';
 import type { Physics } from '../physics/Physics';
 import { BLAST_COST, Survival } from '../game/Survival';
@@ -15,7 +15,7 @@ export interface Hit {
   distance: number;
 }
 
-export type ToolId = 'block' | 'wall' | 'floor' | 'pillar' | 'ramp' | 'sphere' | 'flatten' | 'smooth' | 'blast';
+export type ToolId = 'block' | 'wall' | 'floor' | 'pillar' | 'ramp' | 'sphere' | 'flatten' | 'smooth' | 'lamp' | 'blast';
 
 interface ToolDef {
   id: ToolId;
@@ -35,6 +35,7 @@ export const TOOLS: ToolDef[] = [
   { id: 'sphere', name: 'Terrain', grid: false, size: 3, maxSize: 24 },
   { id: 'flatten', name: 'Flatten', grid: false, size: 8, maxSize: 32 },
   { id: 'smooth', name: 'Smooth', grid: false, size: 4, maxSize: 16 },
+  { id: 'lamp', name: 'Lamp', grid: false, size: 1, maxSize: 1 },
   { id: 'blast', name: 'Blast', grid: false, size: 6, maxSize: 16 },
 ];
 
@@ -105,6 +106,8 @@ export class Tools {
   lastChanged = 0;
   /** Messages for the HUD (e.g. "Undone"); consumed by main. */
   message: string | null = null;
+  /** Called with the centre of each lamp placed. */
+  onLamp: ((p: THREE.Vector3) => void) | null = null;
   /** The last explosion, for effects; consumed by main. */
   blast: { center: THREE.Vector3; radius: number } | null = null;
 
@@ -312,6 +315,8 @@ export class Tools {
       min = c.clone().subScalar(r + 4);
       max = c.clone().addScalar(r + 4);
       if (mode === 'dig') return this.commit(min, max, op, false);
+    } else if (id === 'lamp') {
+      return this.lamp(mode, hit);
     } else if (id === 'blast') {
       return this.detonate(hit.point.clone().addScaledVector(hit.normal, -this.radius * 0.3), this.radius);
     } else if (id === 'flatten') {
@@ -399,6 +404,17 @@ export class Tools {
     }
     this.lastChanged = changed;
     return changed;
+  }
+
+  /** Place a small glowing lamp block on the surface (build), or knock one out (dig). */
+  private lamp(mode: 'dig' | 'build', hit: Hit): number {
+    const frame = frameAt(hit.point);
+    const c = toLocal(frame, hit.point.clone().addScaledVector(hit.normal, mode === 'build' ? 1.1 : -0.9));
+    const x = Math.round(c.x), y = Math.round(c.y), z = Math.round(c.z);
+    const piece: Piece = { frame, min: new THREE.Vector3(x - 1, y - 1, z - 1), max: new THREE.Vector3(x + 1, y + 1, z + 1), ramp: null };
+    const n = this.applyPiece(piece, mode, M.LAMP);
+    if (mode === 'build' && n > 0) this.onLamp?.(toWorld(frame, new THREE.Vector3(x, y, z)));
+    return n;
   }
 
   /** Set off an explosion: crater, flying rubble, collapse around it, and a shove for the player. */
@@ -600,7 +616,7 @@ export class Tools {
       const c = t.point.clone();
       this.sphere.position.copy(c);
       this.sphere.scale.setScalar(r);
-      this.brushMat.color.set(this.def.id === 'smooth' ? 0xffffff : this.def.id === 'blast' ? 0xff6a2a : color);
+      this.brushMat.color.set(this.def.id === 'smooth' ? 0xffffff : this.def.id === 'blast' ? 0xff6a2a : this.def.id === 'lamp' ? 0xffd58a : color);
       this.sphere.visible = true;
     }
   }

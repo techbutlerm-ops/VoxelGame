@@ -30,6 +30,7 @@ const RECIPES: Record<number, Recipe> = {
   [M.CONCRETE]: { [M.STONE]: 0.5, [M.SAND]: 0.5 },
   [M.GLASS]: { [M.SAND]: 1 },
   [M.METAL]: { [M.DARK_STONE]: 2 },
+  [M.LAMP]: { [M.WOOD]: 0.25, [M.STONE]: 0.25 },
 };
 
 /** What digging one voxel of a natural material yields. */

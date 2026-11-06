@@ -156,6 +156,7 @@ export class Body {
           g.setAttribute('position', new THREE.BufferAttribute(m.positions, 3));
           g.setAttribute('normal', new THREE.BufferAttribute(m.normals, 3));
           g.setAttribute('color', new THREE.BufferAttribute(m.colors, 3));
+          g.setAttribute('light', new THREE.BufferAttribute(m.light, 2));
           g.setIndex(new THREE.BufferAttribute(m.indices, 1));
           g.computeBoundingSphere();
           const mesh = new THREE.Mesh(g, material);
