@@ -14,6 +14,7 @@
       <pre id="debug"></pre>
     </div>
     <div id="hud-bottom">
+      <div id="tools"></div>
       <div id="brush"></div>
       <div id="hotbar"></div>
     </div>
@@ -26,13 +27,16 @@
         <dt>Space</dt><dd>Jump / fly up</dd>
         <dt>Shift</dt><dd>Sprint</dd>
         <dt>C</dt><dd>Fly down</dd>
-        <dt>F</dt><dd>Toggle fly mode (fast at altitude)</dd>
-        <dt>N</dt><dd>Toggle no-clip</dd>
-        <dt>Left mouse</dt><dd>Dig (hold to keep digging)</dd>
-        <dt>Right mouse</dt><dd>Build with selected material</dd>
-        <dt>Wheel / [ ]</dt><dd>Brush size</dd>
-        <dt>B</dt><dd>Brush shape (sphere / cube)</dd>
+        <dt>F / N</dt><dd>Fly mode / no-clip</dd>
+        <dt>T, Shift+T</dt><dd>Next / previous tool</dd>
+        <dt>Right mouse</dt><dd>Place piece / add terrain</dd>
+        <dt>Left mouse</dt><dd>Remove piece / dig</dd>
+        <dt>Middle mouse</dt><dd>Pick material you're looking at</dd>
+        <dt>Wheel / [ ]</dt><dd>Size</dd>
+        <dt>G</dt><dd>Grid size (0.25–2 m)</dd>
+        <dt>R</dt><dd>Rotate wall / ramp</dd>
         <dt>1–0, Q / E</dt><dd>Select material</dd>
+        <dt>Ctrl+Z</dt><dd>Undo</dd>
         <dt>H</dt><dd>Toggle this help</dd>
         <dt>Esc</dt><dd>Release mouse</dd>
       </dl>
@@ -47,13 +51,15 @@
         <button id="start" disabled>Loading…</button>
         <div class="keys">
           <span><kbd>WASD</kbd> move</span>
-          <span><kbd>Space</kbd> jump</span>
           <span><kbd>F</kbd> fly</span>
-          <span><kbd>LMB</kbd> dig</span>
-          <span><kbd>RMB</kbd> build</span>
-          <span><kbd>Wheel</kbd> brush size</span>
-          <span><kbd>B</kbd> shape</span>
+          <span><kbd>T</kbd> tool</span>
+          <span><kbd>RMB</kbd> place</span>
+          <span><kbd>LMB</kbd> remove</span>
+          <span><kbd>Wheel</kbd> size</span>
+          <span><kbd>G</kbd> grid</span>
+          <span><kbd>R</kbd> rotate</span>
           <span><kbd>1–0</kbd> material</span>
+          <span><kbd>Ctrl+Z</kbd> undo</span>
           <span><kbd>H</kbd> help</span>
         </div>
         <p class="hint">If the mouse can't be captured, drag to look and click to act.</p>

@@ -8,7 +8,8 @@ import { createTerrainMaterial } from './render/terrainMaterial';
 import { Ocean, Sky } from './render/Sky';
 import { Player } from './player/Player';
 import { Input } from './player/Input';
-import { Tools } from './tools/Tools';
+import { TOOLS, Tools, raycast } from './tools/Tools';
+import * as BuildGrid from './tools/BuildGrid';
 import { Hud } from './ui/Hud';
 import './style.css';
 
@@ -101,7 +102,7 @@ async function main() {
     if (!input.active) input.engage();
   });
 
-  Object.assign(window as unknown as Record<string, unknown>, { game: { store, terrain, player, tools, input, camera, scene, renderer } });
+  Object.assign(window as unknown as Record<string, unknown>, { game: { store, terrain, player, tools, input, camera, scene, renderer, raycast, BuildGrid, THREE } });
 
   // --- Loop ---
   const surf: Surface = { h: 0, biome: 0, top: 0, sub: 0, temp: 0, moist: 0 };
@@ -122,6 +123,10 @@ async function main() {
       if (wasNoclip !== player.noclip) hud.flash(player.noclip ? 'No-clip ON' : 'No-clip OFF');
       else if (wasFlying !== player.flying) hud.flash(player.flying ? 'Fly mode ON' : 'Fly mode OFF');
       tools.update(dt, input);
+      if (tools.message) {
+        hud.flash(tools.message);
+        tools.message = null;
+      }
     }
     input.endFrame();
     store.tick();
@@ -149,7 +154,8 @@ async function main() {
     // HUD
     surfaceAt(up.x, up.y, up.z, surf);
     hud.setSlot(tools.slot, tools.materialName);
-    hud.setBrush(`${tools.shape} · ${toMeters(tools.radius * 2).toFixed(2)} m · ${player.noclip ? 'no-clip' : player.flying ? 'flying' : 'walking'}`);
+    hud.setTools(TOOLS.map((t) => t.name), tools.tool);
+    hud.setBrush(`${tools.describe()} · ${player.noclip ? 'no-clip' : player.flying ? 'flying' : 'walking'}`);
     const lat = Math.asin(up.y) * (180 / Math.PI);
     const lon = Math.atan2(up.x, up.z) * (180 / Math.PI);
     hud.setLocation(

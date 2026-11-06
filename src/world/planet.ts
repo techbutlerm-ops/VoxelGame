@@ -390,3 +390,48 @@ export function sampleTree(t: Tree, px: number, py: number, pz: number, lod: num
     if (d < out.d) { out.d = d; out.mat = M.LEAVES; }
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Build frames: flat, level building grids anchored on a lattice of face coordinates (one anchor
+// every ~128 m). Shared by the tools (placing pieces) and the mesher (snapping normals).
+// ---------------------------------------------------------------------------------------------
+
+export const ANCHOR_SPACING = 512;
+const ANCHOR_DA = ANCHOR_SPACING / (R * QUARTER_PI);
+const anchorFc: FaceCoord = { face: 0, a: 0, b: 0 };
+const anchorDir = new Float64Array(3);
+
+export interface FrameAxes {
+  key: string;
+  /** Origin on the sea-level sphere, then the x, y (up) and z axes. */
+  o: [number, number, number];
+  x: [number, number, number];
+  y: [number, number, number];
+  z: [number, number, number];
+}
+
+const frameCache = new Map<string, FrameAxes>();
+
+/** The build frame governing world position (px, py, pz). */
+export function buildFrameAt(px: number, py: number, pz: number): FrameAxes {
+  const face = faceOf(px, py, pz);
+  faceCoordsOn(face, px, py, pz, anchorFc);
+  const ia = Math.round(anchorFc.a / ANCHOR_DA), ib = Math.round(anchorFc.b / ANCHOR_DA);
+  const key = `${face}:${ia}:${ib}`;
+  const hit = frameCache.get(key);
+  if (hit) return hit;
+  const a = Math.max(-1, Math.min(1, ia * ANCHOR_DA)), b = Math.max(-1, Math.min(1, ib * ANCHOR_DA));
+  faceDir(face, a, b, anchorDir);
+  const y: [number, number, number] = [anchorDir[0], anchorDir[1], anchorDir[2]];
+  // X follows the face's first tangent axis, projected flat; Z = X cross Y (right-handed).
+  const t = (face >> 1) + 1;
+  const ax: [number, number, number] = [t % 3 === 0 ? 1 : 0, t % 3 === 1 ? 1 : 0, t % 3 === 2 ? 1 : 0];
+  const dot = ax[0] * y[0] + ax[1] * y[1] + ax[2] * y[2];
+  let x: [number, number, number] = [ax[0] - dot * y[0], ax[1] - dot * y[1], ax[2] - dot * y[2]];
+  const xl = Math.hypot(x[0], x[1], x[2]);
+  x = [x[0] / xl, x[1] / xl, x[2] / xl];
+  const z: [number, number, number] = [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]];
+  const f: FrameAxes = { key, o: [y[0] * R, y[1] * R, y[2] * R], x, y, z };
+  frameCache.set(key, f);
+  return f;
+}

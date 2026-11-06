@@ -6,6 +6,8 @@ export interface Material {
   color: number;
   /** Material shown instead on steep slopes (grass becomes dirt/rock on cliffs). */
   cliff?: number;
+  /** Construction material: meshed with sharp edges and flat faces instead of smooth terrain. */
+  construct?: boolean;
   /** Relative mass per voxel, used later by structural physics. */
   density: number;
   buildable: boolean;
@@ -36,6 +38,7 @@ export const M = {
   GLASS: 20,
   CLAY: 21,
   ICE: 22,
+  STONE_BLOCK: 23,
 } as const;
 
 const defs: Omit<Material, 'id'>[] = [];
@@ -56,28 +59,29 @@ def(M.WOOD, { name: 'Wood', color: 0x6e4c31, density: 0.7, buildable: true });
 def(M.LEAVES, { name: 'Leaves', color: 0x548f37, density: 0.2, buildable: true });
 def(M.PINE, { name: 'Pine', color: 0x325f3c, density: 0.2, buildable: false });
 def(M.CACTUS, { name: 'Cactus', color: 0x5f8f3e, density: 0.5, buildable: false });
-def(M.PLANKS, { name: 'Planks', color: 0xb98a55, density: 0.6, buildable: true });
-def(M.BRICK, { name: 'Brick', color: 0xa5503a, density: 1.9, buildable: true });
-def(M.CONCRETE, { name: 'Concrete', color: 0xbdbcb5, density: 2.4, buildable: true });
-def(M.METAL, { name: 'Metal', color: 0x9aa4ae, density: 7.8, buildable: true });
-def(M.GLASS, { name: 'Glass', color: 0xc4e6f0, density: 2.5, buildable: true });
-def(M.CLAY, { name: 'Clay', color: 0xb5795a, density: 1.8, buildable: true });
+def(M.PLANKS, { construct: true, name: 'Planks', color: 0xb98a55, density: 0.6, buildable: true });
+def(M.BRICK, { construct: true, name: 'Brick', color: 0xa5503a, density: 1.9, buildable: true });
+def(M.CONCRETE, { construct: true, name: 'Concrete', color: 0xbdbcb5, density: 2.4, buildable: true });
+def(M.METAL, { construct: true, name: 'Metal', color: 0x9aa4ae, density: 7.8, buildable: true });
+def(M.GLASS, { construct: true, name: 'Glass', color: 0xc4e6f0, density: 2.5, buildable: true });
+def(M.CLAY, { construct: true, name: 'Clay', color: 0xb5795a, density: 1.8, buildable: true });
 def(M.ICE, { name: 'Ice', color: 0xbcdcea, density: 0.9, buildable: false });
+def(M.STONE_BLOCK, { construct: true, name: 'Stone Block', color: 0x9c9890, density: 2.6, buildable: true });
 
 export const MATERIALS: Material[] = defs.map((m, id) => ({ ...m, id }));
 
 /** Materials offered in the hotbar, in slot order (keys 1-9, 0). */
 export const HOTBAR: number[] = [
-  M.DIRT,
-  M.STONE,
-  M.SAND,
-  M.WOOD,
+  M.STONE_BLOCK,
   M.PLANKS,
   M.BRICK,
   M.CONCRETE,
   M.METAL,
   M.GLASS,
-  M.LEAVES,
+  M.CLAY,
+  M.DIRT,
+  M.STONE,
+  M.SAND,
 ];
 
 const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
@@ -85,12 +89,14 @@ const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.
 /** Linear RGB per material (for vertex colors) and the id of the cliff variant. */
 export const MATERIAL_LINEAR = new Float32Array(64 * 3);
 export const MATERIAL_CLIFF = new Uint8Array(64);
+export const MATERIAL_CONSTRUCT = new Uint8Array(64);
 for (const m of MATERIALS) {
   if (!m) continue;
   MATERIAL_LINEAR[m.id * 3] = srgbToLinear(((m.color >> 16) & 255) / 255);
   MATERIAL_LINEAR[m.id * 3 + 1] = srgbToLinear(((m.color >> 8) & 255) / 255);
   MATERIAL_LINEAR[m.id * 3 + 2] = srgbToLinear((m.color & 255) / 255);
   MATERIAL_CLIFF[m.id] = m.cliff ?? m.id;
+  MATERIAL_CONSTRUCT[m.id] = m.construct ? 1 : 0;
 }
 
 export function hexColor(id: number): string {

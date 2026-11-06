@@ -8,15 +8,7 @@
   --slot: rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
-/* The game is always rendered on a dark HUD; light-mode tokens intentionally match. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) {
-    --bg: #0e1116;
-  }
-}
-:root[data-theme='dark'] {
-  --bg: #0e1116;
-}
+/* The game UI is deliberately dark-only: HUD text sits over a bright 3D scene. */
 
 * {
   box-sizing: border-box;
@@ -100,6 +92,26 @@ body {
   gap: 6px;
   pointer-events: none;
 }
+#tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+.tool {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.75);
+  background: var(--slot);
+  border: 1px solid var(--line);
+}
+.tool.active {
+  color: #06121e;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
 #brush {
   font-size: 12px;
   color: #fff;
@@ -117,7 +129,7 @@ body {
 #hotbar::before {
   content: attr(data-name);
   position: absolute;
-  bottom: calc(100% + 22px);
+  bottom: calc(100% + 46px);
   left: 50%;
   transform: translateX(-50%);
   color: #fff;

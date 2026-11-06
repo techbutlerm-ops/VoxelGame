@@ -6,6 +6,9 @@ export class Input {
   readonly keys = new Set<string>();
   /** Keys pressed since the last `endFrame()`. */
   readonly pressed = new Set<string>();
+  /** Of those, the ones pressed while Ctrl/Cmd or Shift was held (captured at keydown). */
+  readonly pressedCtrl = new Set<string>();
+  readonly pressedShift = new Set<string>();
   lookDX = 0;
   lookDY = 0;
   wheel = 0;
@@ -26,7 +29,13 @@ export class Input {
 
     window.addEventListener('keydown', (e) => {
       if (!this.active) return;
-      if (!this.keys.has(e.code)) this.pressed.add(e.code);
+      if (!this.keys.has(e.code)) {
+        this.pressed.add(e.code);
+        if (e.ctrlKey || e.metaKey) this.pressedCtrl.add(e.code);
+        if (e.shiftKey) this.pressedShift.add(e.code);
+      }
+      // Ctrl+Z is the game's undo, not the browser's.
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') e.preventDefault();
       this.keys.add(e.code);
       if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'Quote', 'Slash'].includes(e.code)) e.preventDefault();
       if (e.code === 'Escape' && this.dragMode) this.setActive(false);
@@ -120,6 +129,8 @@ export class Input {
 
   endFrame() {
     this.pressed.clear();
+    this.pressedCtrl.clear();
+    this.pressedShift.clear();
     this.clicked.clear();
     this.lookDX = 0;
     this.lookDY = 0;

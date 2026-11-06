@@ -3,6 +3,8 @@ import { HOTBAR, MATERIALS, hexColor } from '../world/materials';
 /** DOM overlay: crosshair, hotbar, brush readout, location, debug stats and the help panel. */
 export class Hud {
   private hotbar = document.getElementById('hotbar')!;
+  private toolbar = document.getElementById('tools')!;
+  private toolEls: HTMLElement[] = [];
   private brush = document.getElementById('brush')!;
   private debug = document.getElementById('debug')!;
   private location = document.getElementById('location')!;
@@ -20,6 +22,19 @@ export class Hud {
       this.hotbar.appendChild(el);
       this.slots.push(el);
     });
+  }
+
+  setTools(names: string[], active: number) {
+    if (!this.toolEls.length) {
+      names.forEach((name) => {
+        const el = document.createElement('span');
+        el.className = 'tool';
+        el.textContent = name;
+        this.toolbar.appendChild(el);
+        this.toolEls.push(el);
+      });
+    }
+    this.toolEls.forEach((el, i) => el.classList.toggle('active', i === active));
   }
 
   setSlot(slot: number, name: string) {

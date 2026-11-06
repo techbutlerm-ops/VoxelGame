@@ -31,15 +31,32 @@ generation (for debugging).
 | Input | Action |
 | --- | --- |
 | WASD / Space / Shift | Move / jump / sprint |
-| F | Fly mode (speed scales with altitude, so you can reach orbit) |
-| N | No-clip |
+| F / N | Fly mode (speed scales with altitude) / no-clip |
 | C | Fly down |
-| Left mouse | Dig (hold to repeat) |
-| Right mouse | Build with the selected material |
-| Wheel or `[` `]` | Brush size |
-| B | Brush shape: sphere / cube (cubes align to local up and your heading) |
+| T, Shift+T | Next / previous tool |
+| Right mouse | Place a piece / add terrain |
+| Left mouse | Remove a piece / dig |
+| Middle mouse | Pick the material you're looking at |
+| Wheel or `[` `]` | Tool size |
+| G | Grid size: 0.25, 0.5, 1 or 2 m |
+| R | Rotate walls and ramps |
 | 1–0, Q/E | Select material |
+| Ctrl+Z | Undo |
 | H | Help |
+
+### Building
+
+Grid tools (**Block, Wall, Floor, Pillar, Ramp**) snap to a build grid that is level with the
+ground wherever you stand on the planet. Grids are anchored on a fixed lattice (one anchor about
+every 128 m), so a building always lines up with itself when you come back to extend it. A ghost
+shows where a piece will go, with a red outline for what left-click would remove. Pieces sit on
+the face you aim at, rise from it, and line up with the cells around them.
+
+Terrain tools sculpt smoothly: **Terrain** digs or adds a sphere, **Flatten** levels ground to
+the nearest grid height (handy before laying a floor), and **Smooth** softens rough ground.
+
+Construction materials (stone block, planks, brick, concrete, metal, glass, clay) are meshed with
+sharp edges and flat faces. Natural materials (dirt, stone, sand) stay smooth.
 
 ## Architecture
 
@@ -47,12 +64,13 @@ generation (for debugging).
 | --- | --- |
 | `src/world/planet.ts` | Height field over the sphere, biomes, caves, tree SDFs, cube-sphere face coordinates |
 | `src/world/volume.ts` | Generates a chunk's padded density/material volume (height lattice + interpolation), applies edit overlays |
-| `src/world/surfaceNets.ts` | Surface Nets mesher with gradient normals and slope-aware coloring |
+| `src/world/surfaceNets.ts` | Hybrid mesher: smooth Surface Nets for terrain; dual contouring for construction materials, with hermite normals and vertices snapped to the build grid so pieces come out flat-faced and sharp |
 | `src/world/job.ts`, `terrain.worker.ts`, `WorkerPool.ts` | Off-thread generate+mesh jobs, with main-thread fallback |
 | `src/world/Terrain.ts` | Octree LOD around the viewer; swaps meshes only once their replacements are ready |
 | `src/world/VoxelStore.ts` | Full-resolution voxels near the player (cache + edited chunks), density queries, smooth edits |
 | `src/player/Player.ts` | Spherical-gravity character controller against the density field |
-| `src/tools/Tools.ts` | Raymarched targeting and dig/build brushes |
+| `src/tools/BuildGrid.ts` | Build frames on the sphere, grid pieces and their signed distance fields |
+| `src/tools/Tools.ts` | Raymarched targeting, grid pieces, terrain brushes, previews and undo |
 | `src/render/` | Terrain material (procedural detail), sky dome, camera-centered ocean |
 
 Units are voxels throughout (1 voxel = 0.25 m). Chunks are 32³ voxels at LOD 0; each LOD level

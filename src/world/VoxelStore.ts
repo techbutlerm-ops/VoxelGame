@@ -18,6 +18,15 @@ export interface ChunkVoxels {
   lastUsed: number;
 }
 
+/** Per-voxel edit: read (d, m), write the result to out and return true to apply it. */
+export type EditOp = (x: number, y: number, z: number, d: number, m: number, out: { d: number; m: number }) => boolean;
+
+/** Previous values of every voxel an edit touched, so it can be undone. */
+export interface UndoRecord {
+  chunks: Map<ChunkVoxels, { idx: number[]; d: number[]; m: number[] }>;
+  box: [number, number, number, number, number, number];
+}
+
 const OFF = 2048;
 export const chunkKey = (cx: number, cy: number, cz: number) => ((cx + OFF) * 4096 + (cy + OFF)) * 4096 + (cz + OFF);
 
@@ -123,57 +132,68 @@ export class VoxelStore {
   }
 
   /**
-   * Apply a smooth edit. `field(x,y,z)` returns the brush's signed distance (negative inside).
-   * Digging carves (density = min(d, sdf)); building adds (density = max(d, -sdf)) with `mat`.
-   * Returns the keys of LOD0 chunks whose meshes need rebuilding.
+   * Apply an edit over the voxel box [min, max]. `op` receives each voxel's current density and
+   * material and writes the new values into `out`, returning false to leave the voxel alone.
+   * Returns the number of voxels that flipped between solid and air, the LOD0 chunks whose
+   * meshes need rebuilding, and an undo record.
    */
   edit(
-    min: [number, number, number], max: [number, number, number],
-    field: (x: number, y: number, z: number) => number,
-    mode: 'dig' | 'build', mat: number,
-  ): { changed: number; dirty: Set<number> } {
-    const dirty = new Set<number>();
+    min: [number, number, number], max: [number, number, number], op: EditOp,
+  ): { changed: number; dirty: Set<number>; undo: UndoRecord | null } {
     let changed = 0;
     const x0 = Math.floor(min[0]), y0 = Math.floor(min[1]), z0 = Math.floor(min[2]);
     const x1 = Math.ceil(max[0]), y1 = Math.ceil(max[1]), z1 = Math.ceil(max[2]);
-    const touched = new Set<ChunkVoxels>();
+    const record: UndoRecord = { chunks: new Map(), box: [x0, y0, z0, x1, y1, z1] };
+    const out = { d: 0, m: 0 };
 
     for (let z = z0; z <= z1; z++)
       for (let y = y0; y <= y1; y++)
         for (let x = x0; x <= x1; x++) {
-          const sdf = field(x, y, z);
-          if (sdf > DENSITY_CLAMP) continue;
           const c = this.chunk(Math.floor(x / CHUNK), Math.floor(y / CHUNK), Math.floor(z / CHUNK));
-          this.materialize(c);
           const i = x - c.ox + (y - c.oy + (z - c.oz) * CHUNK) * CHUNK;
-          const old = dequantize(c.density![i]);
-          let nd: number;
-          if (mode === 'dig') {
-            nd = Math.min(old, sdf);
-          } else {
-            nd = Math.max(old, -sdf);
-            if (-sdf > old - 0.5 && -sdf > -1.5) c.material![i] = mat;
-          }
-          const q = quantize(Math.max(-DENSITY_CLAMP, Math.min(DENSITY_CLAMP, nd)));
-          if (q !== c.density![i]) {
-            if ((c.density![i] > 128) !== (q > 128)) changed++;
-            c.density![i] = q;
-            touched.add(c);
-          }
+          const oldQ = c.density ? c.density[i] : c.uniformDensity;
+          const oldM = c.material ? c.material[i] : c.uniformMaterial;
+          if (!op(x, y, z, dequantize(oldQ), oldM, out)) continue;
+          const q = quantize(Math.max(-DENSITY_CLAMP, Math.min(DENSITY_CLAMP, out.d)));
+          if (q === oldQ && out.m === oldM) continue;
+          this.materialize(c);
+          let rec = record.chunks.get(c);
+          if (!rec) record.chunks.set(c, (rec = { idx: [], d: [], m: [] }));
+          rec.idx.push(i); rec.d.push(oldQ); rec.m.push(oldM);
+          if ((oldQ > 128) !== (q > 128)) changed++;
+          c.density![i] = q;
+          c.material![i] = out.m;
         }
 
-    for (const c of touched) {
+    if (!record.chunks.size) return { changed, dirty: new Set(), undo: null };
+    for (const c of record.chunks.keys()) {
       c.edited = true;
       this.edited.add(chunkKey(c.ox / CHUNK, c.oy / CHUNK, c.oz / CHUNK));
     }
-    if (touched.size) {
-      // Any chunk whose padded sample range [-PAD, CHUNK+PAD] overlaps the edit must be remeshed.
-      const r0 = (v: number) => Math.ceil((v - CHUNK - PAD) / CHUNK), r1 = (v: number) => Math.floor((v + PAD) / CHUNK);
-      for (let cz = r0(z0); cz <= r1(z1); cz++)
-        for (let cy = r0(y0); cy <= r1(y1); cy++)
-          for (let cx = r0(x0); cx <= r1(x1); cx++) dirty.add(chunkKey(cx, cy, cz));
+    return { changed, dirty: this.dirtyAround(x0, y0, z0, x1, y1, z1), undo: record };
+  }
+
+  /** Restore the voxels an edit changed. Returns the chunks to remesh. */
+  revert(record: UndoRecord): Set<number> {
+    for (const [c, rec] of record.chunks) {
+      this.materialize(c);
+      for (let k = rec.idx.length - 1; k >= 0; k--) {
+        c.density![rec.idx[k]] = rec.d[k];
+        c.material![rec.idx[k]] = rec.m[k];
+      }
     }
-    return { changed, dirty };
+    const [x0, y0, z0, x1, y1, z1] = record.box;
+    return this.dirtyAround(x0, y0, z0, x1, y1, z1);
+  }
+
+  /** LOD0 chunks whose padded sample range [-PAD, CHUNK+PAD] overlaps a voxel box. */
+  private dirtyAround(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): Set<number> {
+    const dirty = new Set<number>();
+    const r0 = (v: number) => Math.ceil((v - CHUNK - PAD) / CHUNK), r1 = (v: number) => Math.floor((v + PAD) / CHUNK);
+    for (let cz = r0(z0); cz <= r1(z1); cz++)
+      for (let cy = r0(y0); cy <= r1(y1); cy++)
+        for (let cx = r0(x0); cx <= r1(x1); cx++) dirty.add(chunkKey(cx, cy, cz));
+    return dirty;
   }
 
   private materialize(c: ChunkVoxels) {
